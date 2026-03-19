@@ -40,7 +40,7 @@ export interface TxHistory {
 export const mockPools: Pool[] = [
   {
     id: 'pool-1',
-    name: 'Hedera Growth Fund',
+    name: 'OneYield Growth Fund',
     symbol: 'HGF',
     borrower: '0.0.4515312',
     totalRequested: 500000,
