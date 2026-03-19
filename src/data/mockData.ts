@@ -114,7 +114,7 @@ export const mockPools: Pool[] = [
 ];
 
 export const mockLenderPositions: LenderPosition[] = [
-  { poolId: 'pool-1', poolName: 'Hedera Growth Fund', deposited: 50000, currentValue: 53250, yield: 3250, pending: 850, lpTokens: 50000 },
+  { poolId: 'pool-1', poolName: 'OneYield Growth Fund', deposited: 50000, currentValue: 53250, yield: 3250, pending: 850, lpTokens: 50000 },
   { poolId: 'pool-2', poolName: 'RWA Bridge Capital', deposited: 100000, currentValue: 108500, yield: 8500, pending: 2100, lpTokens: 100000 },
 ];
 

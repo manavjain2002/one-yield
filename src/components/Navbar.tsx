@@ -2,16 +2,17 @@ import { Link, useLocation } from 'react-router-dom';
 import { useWallet } from '@/contexts/WalletContext';
 import { cn } from '@/lib/utils';
 import {
-  LayoutDashboard, Landmark, Wallet, PieChart, Settings, LogOut, Menu, X,
-  TrendingUp, Briefcase, ChevronDown
+  LayoutDashboard, Wallet, PieChart, LogOut, Menu, X,
+  TrendingUp, Briefcase
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import logo from '@/assets/oneyield-logo.png';
 
 const roleNavItems = {
   borrower: [
     { label: 'Dashboard', path: '/borrower', icon: LayoutDashboard },
-    { label: 'My Pools', path: '/borrower/pools', icon: Landmark },
+    { label: 'My Pools', path: '/borrower/pools', icon: Briefcase },
   ],
   lender: [
     { label: 'Dashboard', path: '/lender', icon: LayoutDashboard },
@@ -37,11 +38,9 @@ export function Navbar() {
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 lg:px-8">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-primary">
-              <Landmark className="h-4 w-4 text-primary-foreground" />
-            </div>
+            <img src={logo} alt="OneYield" className="h-8 w-8 rounded-lg" />
             <span className="text-lg font-bold tracking-tight">
-              Hedera<span className="gradient-text">Fi</span>
+              One<span className="gradient-text">Yield</span>
             </span>
           </Link>
 
@@ -65,7 +64,7 @@ export function Navbar() {
           </div>
 
           {/* Right Side */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {/* Network Badge */}
             <div className="hidden items-center gap-1.5 rounded-full border border-border bg-secondary px-3 py-1.5 sm:flex">
               <span className={cn('h-2 w-2 rounded-full', network === 'mainnet' ? 'bg-success' : 'bg-warning')} />

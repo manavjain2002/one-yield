@@ -1,10 +1,11 @@
 import { useWallet } from '@/contexts/WalletContext';
 import { Button } from '@/components/ui/button';
-import { Landmark, Shield, Zap, ArrowRight, Wallet } from 'lucide-react';
+import { Shield, Zap, ArrowRight, Wallet, Landmark } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { UserRole } from '@/contexts/WalletContext';
+import logo from '@/assets/oneyield-logo.png';
 
 export default function LandingPage() {
   const { isConnected, connect, selectRole } = useWallet();
@@ -25,9 +26,7 @@ export default function LandingPage() {
   };
 
   if (isConnected && !showRoleModal) {
-    return (
-      <RoleSelection onSelect={handleRoleSelect} />
-    );
+    return <RoleSelection onSelect={handleRoleSelect} />;
   }
 
   return (
@@ -42,11 +41,9 @@ export default function LandingPage() {
       <div className="relative z-10 flex flex-col items-center gap-8 text-center">
         {/* Logo */}
         <div className="flex items-center gap-3 animate-fade-in">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl gradient-primary glow-primary">
-            <Landmark className="h-7 w-7 text-primary-foreground" />
-          </div>
+          <img src={logo} alt="OneYield" className="h-14 w-14 rounded-2xl" />
           <h1 className="text-4xl font-bold tracking-tight md:text-5xl">
-            Hedera<span className="gradient-text">Fi</span>
+            One<span className="gradient-text">Yield</span>
           </h1>
         </div>
 
@@ -161,7 +158,7 @@ function RoleSelection({ onSelect }: { onSelect: (role: UserRole) => void }) {
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
       <div className="w-full max-w-lg space-y-6">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold">Welcome to HederaFi</h1>
+          <h1 className="text-3xl font-bold">Welcome to OneYield</h1>
           <p className="text-muted-foreground">Select your role to continue</p>
         </div>
         <div className="grid gap-3">
