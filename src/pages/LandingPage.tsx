@@ -13,14 +13,18 @@ export default function LandingPage() {
   const [showRoleModal, setShowRoleModal] = useState(false);
   const navigate = useNavigate();
 
-  const handleConnect = (wallet: 'hashpack' | 'blade') => {
-    connect(wallet);
-    setShowWalletModal(false);
-    setShowRoleModal(true);
+  const handleConnectMetaMask = async () => {
+    try {
+      await connect();
+      setShowWalletModal(false);
+      setShowRoleModal(true);
+    } catch {
+      setShowWalletModal(false);
+    }
   };
 
-  const handleRoleSelect = (role: UserRole) => {
-    selectRole(role);
+  const handleRoleSelect = async (role: UserRole) => {
+    await selectRole(role);
     setShowRoleModal(false);
     navigate(`/${role}`);
   };
@@ -98,25 +102,31 @@ export default function LandingPage() {
             <DialogTitle className="text-center text-xl">Connect Your Wallet</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 py-4">
+            <button
+              type="button"
+              onClick={() => void handleConnectMetaMask()}
+              className="flex items-center gap-4 rounded-2xl border border-border bg-secondary/50 p-4 text-left transition-all hover:border-primary/50 hover:bg-secondary"
+            >
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl gradient-primary">
+                <Wallet className="h-6 w-6 text-primary-foreground" />
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">MetaMask</p>
+                <p className="text-xs text-muted-foreground">
+                  Hedera EVM (Hashio RPC). Your 0x address maps to a Hedera account on the mirror.
+                </p>
+              </div>
+              <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
+            </button>
+
+            {/* HashPack / Blade — uncomment when re-enabled (and restore `WalletKind` + `connect(wallet)` in WalletContext).
             {[
               { id: 'hashpack' as const, name: 'HashPack', desc: 'Most popular Hedera wallet' },
-              { id: 'blade' as const, name: 'Blade', desc: 'Simple and secure wallet' },
+              { id: 'blade' as const, name: 'Blade', desc: 'Extension or WalletConnect QR' },
             ].map(w => (
-              <button
-                key={w.id}
-                onClick={() => handleConnect(w.id)}
-                className="flex items-center gap-4 rounded-2xl border border-border bg-secondary/50 p-4 text-left transition-all hover:border-primary/50 hover:bg-secondary"
-              >
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl gradient-primary">
-                  <Wallet className="h-6 w-6 text-primary-foreground" />
-                </div>
-                <div>
-                  <p className="font-semibold text-foreground">{w.name}</p>
-                  <p className="text-xs text-muted-foreground">{w.desc}</p>
-                </div>
-                <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
-              </button>
+              <button key={w.id} type="button" onClick={() => handleConnect(w.id)} ... />
             ))}
+            */}
           </div>
         </DialogContent>
       </Dialog>

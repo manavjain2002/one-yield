@@ -3,12 +3,12 @@ import { MetricCard } from '@/components/MetricCard';
 import { StatusBadge } from '@/components/StatusBadge';
 import { LiquidFill } from '@/components/LiquidFill';
 import { HashScanLink } from '@/components/HashScanLink';
-import { mockPools, mockTxHistory } from '@/data/mockData';
+import { mockTxHistory } from '@/data/mockData';
 import { Landmark, ArrowDownLeft, Clock, Activity } from 'lucide-react';
 import { Link } from 'react-router-dom';
-
+import { useBorrowerPoolsList } from '@/hooks/useBorrowerPools';
 export default function BorrowerDashboard() {
-  const borrowerPools = mockPools.filter(p => p.borrower === '0.0.4515312');
+  const { data: borrowerPools = [] } = useBorrowerPoolsList();
   const totalBorrowed = borrowerPools.reduce((s, p) => s + p.totalReceived, 0);
   const totalRepaid = borrowerPools.reduce((s, p) => s + p.totalRepaid, 0);
   const pending = totalBorrowed - totalRepaid;

@@ -1,7 +1,9 @@
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { StatusBadge } from '@/components/StatusBadge';
 import { HashScanLink } from '@/components/HashScanLink';
-import { mockPools, mockTxHistory } from '@/data/mockData';
+import type { Pool } from '@/data/mockData';
+import { useManagerSummary } from '@/hooks/useManagerSummary';
+import { usePoolTxHistory } from '@/hooks/useTxHistory';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,12 +11,35 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { ArrowRight, ArrowLeft } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const COLORS = ['hsl(230, 80%, 60%)', 'hsl(142, 71%, 45%)', 'hsl(250, 80%, 65%)'];
 
 export default function ManagerPools() {
-  const [selectedPool, setSelectedPool] = useState(mockPools[0]);
+  const { data: summary } = useManagerSummary();
+  const pools = summary?.poolsUi ?? [];
+  const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
+
+  useEffect(() => {
+    if (!pools.length) {
+      setSelectedPool(null);
+      return;
+    }
+    setSelectedPool((prev) => {
+      if (prev && pools.some((p) => p.id === prev.id)) return prev;
+      return pools[0];
+    });
+  }, [pools]);
+
+  const { data: txHistory = [] } = usePoolTxHistory(selectedPool?.id);
+
+  if (!selectedPool) {
+    return (
+      <DashboardLayout>
+        <div className="p-8 text-muted-foreground">No pools to manage yet.</div>
+      </DashboardLayout>
+    );
+  }
 
   const poolFunds = selectedPool.totalReceived * 0.7;
   const fmFunds = selectedPool.totalReceived * 0.3;
@@ -33,7 +58,7 @@ export default function ManagerPools() {
 
         {/* Pool Selector */}
         <div className="flex gap-2 flex-wrap">
-          {mockPools.map(pool => (
+          {pools.map(pool => (
             <button
               key={pool.id}
               onClick={() => setSelectedPool(pool)}
@@ -155,7 +180,7 @@ export default function ManagerPools() {
                     </tr>
                   </thead>
                   <tbody>
-                    {mockTxHistory.map(tx => (
+                    {txHistory.map(tx => (
                       <tr key={tx.id} className="border-b border-border/30 last:border-0">
                         <td className="px-4 py-3 capitalize font-medium">{tx.type}</td>
                         <td className="px-4 py-3 font-semibold">${tx.amount.toLocaleString()}</td>

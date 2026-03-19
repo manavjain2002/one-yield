@@ -1,5 +1,5 @@
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { mockLenderPositions } from '@/data/mockData';
+import { useLenderPositions } from '@/hooks/useLenderPositions';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,7 @@ import { AlertTriangle, Clock } from 'lucide-react';
 type WithdrawState = 'idle' | 'warning' | 'amount' | 'queued';
 
 export default function LenderPortfolio() {
+  const { data: positions = [] } = useLenderPositions();
   const [withdrawState, setWithdrawState] = useState<WithdrawState>('idle');
   const [selectedPool, setSelectedPool] = useState<string | null>(null);
 
@@ -37,7 +38,7 @@ export default function LenderPortfolio() {
               </tr>
             </thead>
             <tbody>
-              {mockLenderPositions.map(pos => (
+              {positions.map(pos => (
                 <tr key={pos.poolId} className="border-b border-border/30 last:border-0">
                   <td className="px-5 py-4 font-semibold">{pos.poolName}</td>
                   <td className="px-5 py-4">${pos.deposited.toLocaleString()}</td>
@@ -57,7 +58,7 @@ export default function LenderPortfolio() {
 
         {/* Mobile Cards */}
         <div className="space-y-3 md:hidden">
-          {mockLenderPositions.map(pos => (
+          {positions.map(pos => (
             <div key={pos.poolId} className="glass-card rounded-2xl p-5 space-y-3">
               <h3 className="font-semibold">{pos.poolName}</h3>
               <div className="grid grid-cols-2 gap-2 text-sm">

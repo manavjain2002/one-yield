@@ -5,6 +5,10 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  define: {
+    // HashConnect v1 touches `global.Buffer` in the browser bundle
+    global: "globalThis",
+  },
   server: {
     host: "::",
     port: 8080,
@@ -16,6 +20,10 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      buffer: "buffer",
     },
+  },
+  optimizeDeps: {
+    include: ["buffer", "@hashgraph/hashconnect"],
   },
 }));

@@ -1,8 +1,9 @@
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { StatusBadge } from '@/components/StatusBadge';
 import { HashScanLink } from '@/components/HashScanLink';
-import { mockPools, mockTxHistory } from '@/data/mockData';
 import { useParams, Link } from 'react-router-dom';
+import { usePool } from '@/hooks/usePool';
+import { usePoolTxHistory } from '@/hooks/useTxHistory';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,7 +15,18 @@ const COLORS = ['hsl(230, 80%, 60%)', 'hsl(250, 80%, 65%)', 'hsl(200, 80%, 55%)'
 
 export default function PoolDetail() {
   const { poolId } = useParams();
-  const pool = mockPools.find(p => p.id === poolId);
+  const { data: pool, isLoading } = usePool(poolId);
+  const { data: txHistory = [] } = usePoolTxHistory(pool?.id ?? poolId);
+
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+          Loading pool…
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   if (!pool) {
     return (
@@ -187,7 +199,7 @@ export default function PoolDetail() {
                       </tr>
                     </thead>
                     <tbody>
-                      {mockTxHistory
+                      {txHistory
                         .filter(tx => tab === 'received' ? tx.type === 'deposit' : tx.type === tab)
                         .map(tx => (
                           <tr key={tx.id} className="border-b border-border/30 last:border-0">
@@ -197,7 +209,7 @@ export default function PoolDetail() {
                             <td className="px-4 py-3"><StatusBadge status={tx.status} /></td>
                           </tr>
                         ))}
-                      {mockTxHistory.filter(tx => tab === 'received' ? tx.type === 'deposit' : tx.type === tab).length === 0 && (
+                      {txHistory.filter(tx => tab === 'received' ? tx.type === 'deposit' : tx.type === tab).length === 0 && (
                         <tr>
                           <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground text-sm">No transactions yet</td>
                         </tr>

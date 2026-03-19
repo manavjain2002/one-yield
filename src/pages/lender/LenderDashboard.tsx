@@ -1,16 +1,20 @@
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { MetricCard } from '@/components/MetricCard';
 import { RiskBadge } from '@/components/StatusBadge';
-import { mockPools, mockLenderPositions, apyChartData } from '@/data/mockData';
+import { apyChartData } from '@/data/mockData';
+import { useLenderPositions } from '@/hooks/useLenderPositions';
+import { usePoolsList } from '@/hooks/usePools';
 import { TrendingUp, DollarSign, Percent, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 
 export default function LenderDashboard() {
-  const totalDeposited = mockLenderPositions.reduce((s, p) => s + p.deposited, 0);
-  const currentValue = mockLenderPositions.reduce((s, p) => s + p.currentValue, 0);
-  const yieldEarned = mockLenderPositions.reduce((s, p) => s + p.yield, 0);
-  const pending = mockLenderPositions.reduce((s, p) => s + p.pending, 0);
+  const { data: positions = [] } = useLenderPositions();
+  const { data: pools = [] } = usePoolsList();
+  const totalDeposited = positions.reduce((s, p) => s + p.deposited, 0);
+  const currentValue = positions.reduce((s, p) => s + p.currentValue, 0);
+  const yieldEarned = positions.reduce((s, p) => s + p.yield, 0);
+  const pending = positions.reduce((s, p) => s + p.pending, 0);
 
   return (
     <DashboardLayout>
@@ -54,7 +58,7 @@ export default function LenderDashboard() {
             <Link to="/lender/pools" className="text-sm text-primary hover:underline">View All →</Link>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {mockPools.filter(p => p.status === 'active').map(pool => {
+            {pools.filter(p => p.status === 'active').map(pool => {
               const fillPct = (pool.totalReceived / pool.totalRequested) * 100;
               return (
                 <div key={pool.id} className="glass-card rounded-2xl p-5">

@@ -4,6 +4,8 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WalletProvider, useWallet } from "@/contexts/WalletContext";
+import { isApiConfigured } from "@/lib/api";
+import { useEventsSocket } from "@/hooks/useEventsSocket";
 import LandingPage from "./pages/LandingPage";
 import BorrowerDashboard from "./pages/borrower/BorrowerDashboard";
 import BorrowerPools from "./pages/borrower/BorrowerPools";
@@ -18,10 +20,19 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 function ProtectedRoute({ children, allowedRole }: { children: React.ReactNode; allowedRole?: string }) {
-  const { isConnected, role } = useWallet();
+  const { isConnected, role, accessToken } = useWallet();
+  const bypassJwt =
+    !isApiConfigured() || import.meta.env.VITE_USE_MOCK_WALLET === "true";
   if (!isConnected) return <Navigate to="/" replace />;
+  if (!bypassJwt && !accessToken) return <Navigate to="/" replace />;
   if (allowedRole && role !== allowedRole) return <Navigate to="/" replace />;
   return <>{children}</>;
+}
+
+function EventsBridge() {
+  const { accessToken } = useWallet();
+  useEventsSocket(Boolean(accessToken && import.meta.env.VITE_WS_URL));
+  return null;
 }
 
 function AppRoutes() {
@@ -48,6 +59,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <EventsBridge />
           <AppRoutes />
         </BrowserRouter>
       </WalletProvider>

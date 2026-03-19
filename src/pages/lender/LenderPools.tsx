@@ -1,6 +1,6 @@
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { RiskBadge } from '@/components/StatusBadge';
-import { mockPools } from '@/data/mockData';
+import { usePoolsList } from '@/hooks/usePools';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,7 +11,8 @@ import type { Pool } from '@/data/mockData';
 export default function LenderPools() {
   const [depositPool, setDepositPool] = useState<Pool | null>(null);
   const [amount, setAmount] = useState('');
-  const activePools = mockPools.filter(p => p.status === 'active');
+  const { data: pools = [] } = usePoolsList();
+  const activePools = pools.filter(p => p.status === 'active');
 
   const expectedYield = amount ? (parseFloat(amount) * (depositPool?.apy || 0) / 100).toFixed(2) : '0.00';
 

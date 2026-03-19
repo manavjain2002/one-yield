@@ -1,4 +1,9 @@
-export const TOKENS = ['HBAR', 'USDC', 'USDT', 'HBARX', 'SAUCE', 'DAI'] as const;
+/**
+ * Borrower “accepted tokens” — mock USDC only (MetaMask / Hedera EVM).
+ * Other tokens commented out until multi-asset pools are needed again.
+ */
+// export const TOKENS = ['HBAR', 'USDC', 'USDT', 'HBARX', 'SAUCE', 'DAI'] as const;
+export const TOKENS = ['USDC'] as const;
 
 export interface Pool {
   id: string;

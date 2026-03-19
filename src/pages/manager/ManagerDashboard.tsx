@@ -2,16 +2,19 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { MetricCard } from '@/components/MetricCard';
 import { StatusBadge } from '@/components/StatusBadge';
 import { HashScanLink } from '@/components/HashScanLink';
-import { mockPools, mockTxHistory, aumChartData } from '@/data/mockData';
+import { mockTxHistory, aumChartData } from '@/data/mockData';
+import { useManagerSummary } from '@/hooks/useManagerSummary';
 import { BarChart3, Wallet, Landmark, Clock, ArrowRightLeft } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 import { Link } from 'react-router-dom';
 
 export default function ManagerDashboard() {
-  const totalAum = mockPools.reduce((s, p) => s + p.totalReceived, 0);
+  const { data: summary } = useManagerSummary();
+  const pools = summary?.poolsUi ?? [];
+  const totalAum = Number(summary?.totalAssetUnderManagement ?? 0) || pools.reduce((s, p) => s + p.totalReceived, 0);
   const poolBalance = totalAum * 0.7;
   const fmBalance = totalAum * 0.3;
-  const pendingRepay = mockPools.reduce((s, p) => s + (p.totalReceived - p.totalRepaid), 0);
+  const pendingRepay = pools.reduce((s, p) => s + (p.totalReceived - p.totalRepaid), 0);
 
   return (
     <DashboardLayout>
@@ -69,7 +72,7 @@ export default function ManagerDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {mockPools.map(pool => (
+                {pools.map(pool => (
                   <tr key={pool.id} className="border-b border-border/30 last:border-0">
                     <td className="px-5 py-3 font-semibold">{pool.name}</td>
                     <td className="px-5 py-3">${pool.totalReceived.toLocaleString()}</td>
