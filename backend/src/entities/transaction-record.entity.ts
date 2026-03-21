@@ -13,6 +13,7 @@ export type TxType =
   | 'send_to_reserve'
   | 'activate'
   | 'pause'
+  | 'unpause'
   | 'create_pool'
   | 'aum_update'
   | 'transfer'
@@ -31,6 +32,9 @@ export class TransactionRecordEntity {
 
   @Column({ type: 'varchar', length: 32 })
   type: TxType;
+
+  @Column({ nullable: true })
+  poolId: string | null;
 
   @Column({ nullable: true })
   poolAddress: string | null;
@@ -54,7 +58,7 @@ export class TransactionRecordEntity {
   status: TxStatus;
 
   @Column({ type: 'bigint', nullable: true })
-  consensusTimestamp: string | null;
+  blockNumber: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

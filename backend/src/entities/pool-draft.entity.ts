@@ -16,7 +16,7 @@ export class PoolDraftEntity {
   borrowerAddress: string;
 
   @Column({ nullable: true })
-  hederaTransactionId: string | null;
+  txHash: string | null;
 
   @Column()
   name: string;

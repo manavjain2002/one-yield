@@ -1,88 +1,39 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { api, setAuthToken, loadStoredToken, isApiConfigured, getErrorMessage } from '@/lib/api';
-import { pairMetaMask } from '@/lib/hedera/metamask';
-import type { PairingResult } from '@/lib/hedera/types';
-import { HEDERA_EVM_RPC_URL } from '@/lib/chain-constants';
+import { useAccount, useDisconnect, useBalance, useSignMessage } from 'wagmi';
+import { useConnectModal } from '@rainbow-me/rainbowkit';
 
-// When re-enabling HashPack / Blade, extend this type and uncomment imports + branches in `connect` below.
-// import { pairHashPack } from '@/lib/hedera/hashconnect';
-// import { pairBlade } from '@/lib/hedera/blade';
-// export type WalletKind = 'hashpack' | 'blade' | 'metamask';
-export type WalletKind = 'metamask';
+export type WalletKind = 'metamask' | 'walletconnect';
 
 export type UserRole = 'borrower' | 'lender' | 'manager';
 
 interface WalletState {
   isConnected: boolean;
   address: string | null;
+  username: string | null;
   role: UserRole | null;
   balance: number;
   network: 'mainnet' | 'testnet';
   accessToken: string | null;
   walletType: WalletKind | null;
+  needsReAuth: boolean;
 }
 
 interface WalletContextType extends WalletState {
-  /** MetaMask-only for now (Hedera EVM). */
   connect: () => Promise<void>;
   disconnect: () => void;
   selectRole: (role: UserRole) => Promise<void>;
+  loginUser: (username: string, passwordPlain: string) => Promise<void>;
+  registerUser: (username: string, passwordPlain: string, role: UserRole) => Promise<void>;
+  setNeedsReAuth: (v: boolean) => void;
 }
 
 const WalletContext = createContext<WalletContextType | null>(null);
 
-/** Mock MetaMask path uses an EVM address (no Hedera account id required). */
-const MOCK_EVM_ADDRESS =
-  (import.meta.env.VITE_MOCK_WALLET_EVM as string | undefined) ??
-  '0x0000000000000000000000000000000000000001';
-
-async function fetchHbarBalance(hederaAccountId: string): Promise<number> {
-  const base =
-    import.meta.env.VITE_MIRROR_NODE_URL ??
-    'https://testnet.mirrornode.hedera.com';
-  try {
-    const r = await fetch(`${base}/api/v1/accounts/${hederaAccountId}`);
-    if (!r.ok) return 0;
-    const j = (await r.json()) as { balance?: { balance?: number } };
-    const tinybars = j.balance?.balance ?? 0;
-    return tinybars / 100_000_000;
-  } catch {
-    return 0;
-  }
-}
-
-/** MetaMask / Hedera EVM: native balance via JSON-RPC (HBAR on EVM side). */
-async function fetchEvmNativeBalance(evmAddress: string): Promise<number> {
-  try {
-    const res = await fetch(HEDERA_EVM_RPC_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'eth_getBalance',
-        params: [evmAddress.trim(), 'latest'],
-      }),
-    });
-    const j = (await res.json()) as { result?: string };
-    const wei = BigInt(j.result ?? '0x0');
-    return Number(wei) / 1e18;
-  } catch {
-    return 0;
-  }
-}
-
-async function fetchWalletBalance(walletRef: string): Promise<number> {
-  const w = walletRef.trim();
-  if (/^0x[a-fA-F0-9]{40}$/i.test(w)) {
-    return fetchEvmNativeBalance(w);
-  }
-  return fetchHbarBalance(w);
-}
-
 function decodeJwtPayload(token: string): {
-  accountId?: string;
+  walletAddress?: string;
+  username?: string;
   role?: UserRole;
 } | null {
   try {
@@ -91,8 +42,9 @@ function decodeJwtPayload(token: string): {
     const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
     const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
     const json = JSON.parse(atob(b64 + pad)) as {
-      accountId?: string;
+      walletAddress?: string;
       role?: UserRole;
+      username?: string;
     };
     return json;
   } catch {
@@ -101,111 +53,204 @@ function decodeJwtPayload(token: string): {
 }
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
+  const { address: wagmiAddress, isConnected: wagmiIsConnected } = useAccount();
+  const { disconnect: wagmiDisconnect } = useDisconnect();
+  const { openConnectModal } = useConnectModal();
+  const { data: balanceData } = useBalance({ address: wagmiAddress });
+  const { signMessageAsync } = useSignMessage();
+
   const [state, setState] = useState<WalletState>({
     isConnected: false,
     address: null,
+    username: null,
     role: null,
     balance: 0,
-    network:
-      import.meta.env.VITE_HEDERA_NETWORK === 'mainnet' ? 'mainnet' : 'testnet',
+    network: import.meta.env.VITE_NETWORK === 'mainnet' ? 'mainnet' : 'testnet',
     accessToken: null,
     walletType: null,
+    needsReAuth: false,
   });
 
+  // Load stored token on mount
   useEffect(() => {
     const t = loadStoredToken();
     if (t) {
       const payload = decodeJwtPayload(t);
-      setState((prev) => ({
-        ...prev,
-        accessToken: t,
-        address: payload?.accountId ?? prev.address,
-        role: payload?.role ?? prev.role,
-        isConnected: Boolean(payload?.accountId),
-        walletType: payload?.accountId ? 'metamask' : prev.walletType,
-      }));
-      if (payload?.accountId) {
-        void fetchWalletBalance(payload.accountId).then((bal) => {
-          setState((p) => ({ ...p, balance: bal }));
-        });
+      if (payload) {
+        setAuthToken(t);
+        setState((prev) => ({
+          ...prev,
+          accessToken: t,
+          address: payload.walletAddress || null, // Strictly follow payload
+          username: payload.username || null,
+          role: payload.role || null,
+          isConnected: true,
+        }));
       }
     }
   }, []);
 
+  // Sync state with wagmi
+  useEffect(() => {
+    if (wagmiIsConnected && wagmiAddress) {
+      setState(prev => ({
+        ...prev,
+        isConnected: true,
+        address: wagmiAddress,
+        balance: balanceData ? Number(balanceData.formatted) : prev.balance,
+      }));
+    } else if (!wagmiIsConnected && state.address) {
+      // ONLY disconnect if the role strictly requires a wallet (Lender/Manager)
+      // Borrowers and Admins using ID/Pass should NOT be disconnected by wagmi
+      if (state.role === 'lender' || state.role === 'manager') {
+        if (!state.username) { // If it's a pure Web3 user
+          console.log('[WalletContext] Web3 disconnected - logging out');
+          disconnect();
+        }
+      }
+    }
+  }, [wagmiIsConnected, wagmiAddress, balanceData]);
+
   const disconnect = useCallback(() => {
     setAuthToken(null);
+    wagmiDisconnect();
     setState({
       isConnected: false,
       address: null,
+      username: null,
       role: null,
       balance: 0,
-      network:
-        import.meta.env.VITE_HEDERA_NETWORK === 'mainnet' ? 'mainnet' : 'testnet',
+      network: import.meta.env.VITE_NETWORK === 'mainnet' ? 'mainnet' : 'testnet',
       accessToken: null,
       walletType: null,
+      needsReAuth: false,
     });
-  }, []);
+  }, [wagmiDisconnect]);
 
   const connect = useCallback(async () => {
-    const useMock =
-      import.meta.env.VITE_USE_MOCK_WALLET === 'true' || !isApiConfigured();
+    const useMock = import.meta.env.VITE_USE_MOCK_WALLET === 'true' || !isApiConfigured();
 
     if (useMock) {
-      setAuthToken(null);
       setState((prev) => ({
         ...prev,
         isConnected: true,
-        address: MOCK_EVM_ADDRESS,
+        address: '0x0000000000000000000000000000000000000001',
         walletType: 'metamask',
         balance: 12450.75,
-        accessToken: null,
       }));
-      toast.success(
-        'Connected (mock wallet — set VITE_API_URL + MetaMask for production)',
-      );
+      toast.success('Connected (mock wallet)');
       return;
     }
 
-    const tid = toast.loading('Connect MetaMask…');
+    if (openConnectModal) {
+      openConnectModal();
+    } else {
+      toast.error('Connect modal not available');
+    }
+  }, [openConnectModal]);
+
+  const loginWeb3 = useCallback(async (walletAddress: string) => {
     try {
-      let pair: PairingResult;
-
-      pair = await pairMetaMask();
-
-      // HashPack — uncomment when needed:
-      // pair = await pairHashPack();
-      // Blade — uncomment when needed:
-      // pair = await pairBlade();
-
-      const { accountId, signUtf8 } = pair;
-      const { data: ch } = await api.post<{ challengeId: string; message: string }>(
+      // 1. Get challenge
+      const { data: challenge } = await api.post<{ challengeId: string; message: string }>(
         '/auth/challenge',
-        { accountId },
+        { walletAddress }
       );
-      const signatureHex = await signUtf8(ch.message);
+
+      // 2. Sign message
+      const signatureHex = await signMessageAsync({ 
+        account: walletAddress as `0x${string}`,
+        message: challenge.message 
+      });
+
+      // 3. Verify and login
       const { data: auth } = await api.post<{
         accessToken: string;
         role: UserRole;
-        accountId: string;
+        walletAddress: string;
       }>('/auth/verify', {
-        accountId,
-        challengeId: ch.challengeId,
+        walletAddress,
+        challengeId: challenge.challengeId,
         signatureHex,
       });
+
       setAuthToken(auth.accessToken);
-      const bal = await fetchWalletBalance(auth.accountId);
       setState((prev) => ({
         ...prev,
         isConnected: true,
-        address: auth.accountId,
-        walletType: 'metamask',
-        balance: bal,
+        address: auth.walletAddress,
         accessToken: auth.accessToken,
-        role: auth.role ?? prev.role,
+        role: auth.role,
+        needsReAuth: false,
       }));
-      toast.success('Wallet connected', { id: tid });
+      
+      toast.success('Web3 identity verified');
     } catch (e) {
-      toast.error(getErrorMessage(e), { id: tid });
+      console.error('[WalletContext] Web3 login failed:', e);
+      toast.error('Web3 login failed: ' + getErrorMessage(e));
+      // If login fails, we might want to disconnect to avoid being stuck in a half-connected state
+      disconnect();
+    }
+  }, [signMessageAsync, disconnect]);
+
+  // Auth verification effect when address changes
+  useEffect(() => {
+    const verifyWallet = async () => {
+      if (wagmiAddress && !state.accessToken) {
+        await loginWeb3(wagmiAddress);
+      }
+    };
+    void verifyWallet();
+  }, [wagmiAddress, state.accessToken, loginWeb3]);
+
+  const loginUser = useCallback(async (username: string, passwordPlain: string) => {
+    try {
+      const { data } = await api.post<{
+        accessToken: string;
+        role: UserRole;
+        username: string;
+      }>('/auth/login', { username, passwordPlain });
+      
+      setAuthToken(data.accessToken);
+      setState(prev => ({
+        ...prev,
+        isConnected: true,
+        address: null,
+        username: data.username,
+        walletType: null,
+        accessToken: data.accessToken,
+        role: data.role,
+        needsReAuth: false,
+      }));
+      toast.success('Logged in successfully');
+    } catch (e) {
+      toast.error(getErrorMessage(e));
+      throw e;
+    }
+  }, []);
+
+  const registerUser = useCallback(async (username: string, passwordPlain: string, role: UserRole) => {
+    try {
+      const { data } = await api.post<{
+        accessToken: string;
+        role: UserRole;
+        username: string;
+      }>('/auth/register', { username, passwordPlain, role });
+      
+      setAuthToken(data.accessToken);
+      setState(prev => ({
+        ...prev,
+        isConnected: true,
+        address: null,
+        username: data.username,
+        walletType: null,
+        accessToken: data.accessToken,
+        role: data.role,
+        needsReAuth: false,
+      }));
+      toast.success('Registered successfully');
+    } catch (e) {
+      toast.error(getErrorMessage(e));
       throw e;
     }
   }, []);
@@ -217,8 +262,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       try {
-        await api.post('/auth/role', { role });
-        setState((prev) => ({ ...prev, role }));
+        const { data } = await api.post<{ accessToken: string; role: UserRole }>('/auth/role', { role });
+        setAuthToken(data.accessToken);
+        setState((prev) => ({ ...prev, role: data.role, accessToken: data.accessToken }));
       } catch (e) {
         toast.error(getErrorMessage(e));
         setState((prev) => ({ ...prev, role }));
@@ -227,9 +273,23 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     [state.accessToken],
   );
 
+  const setNeedsReAuth = useCallback((v: boolean) => {
+    setState(prev => ({ ...prev, needsReAuth: v }));
+  }, []);
+
+  // Listen for unauthorized events from API
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      console.warn('[WalletContext] Unauthorized event received - triggering re-auth');
+      setState(prev => ({ ...prev, needsReAuth: true }));
+    };
+
+    window.addEventListener('yield_unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('yield_unauthorized', handleUnauthorized);
+  }, []);
   return (
     <WalletContext.Provider
-      value={{ ...state, connect, disconnect, selectRole }}
+      value={{ ...state, connect, disconnect, selectRole, loginUser, registerUser, setNeedsReAuth }}
     >
       {children}
     </WalletContext.Provider>

@@ -48,9 +48,6 @@ export class PoolEntity {
   @Column({ type: 'bigint', default: '0' })
   assetUnderManagement: string;
 
-  @Column({ type: 'int', default: 9500 })
-  nonReservePercentage: number;
-
   @Column({ type: 'varchar', length: 16, default: 'medium' })
   riskLevel: RiskLevel;
 
@@ -66,14 +63,6 @@ export class PoolEntity {
   @Column({ nullable: true })
   oracleManagerAddress: string | null;
 
-  @Column({ type: 'bigint', default: '0' })
-  minimumInvestmentLimit: string;
-
-  @Column({ type: 'bigint', default: '0' })
-  pauseStartTime: string;
-
-  @Column({ type: 'bigint', default: '1800' })
-  pauseDuration: string;
 
   @VersionColumn()
   version: number;

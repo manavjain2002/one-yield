@@ -1,5 +1,5 @@
 import type { Pool } from '@/data/mockData';
-import { MOCK_USDC_ADDRESS } from '@/lib/chain-constants';
+import { POOL_TOKEN_ADDRESS } from '@/lib/chain-constants';
 
 /** API pool row from Nest (enriched) */
 export type ApiPool = {
@@ -17,6 +17,8 @@ export type ApiPool = {
   feeCollectorAddress: string;
   createdAt?: string;
   totalDeposited?: string;
+  lpTokenAddress?: string;
+  lpTokenName?: string;
   borrowerPools?: Array<{
     v1PoolId: string;
     allocationBps: number;
@@ -34,40 +36,58 @@ function num(s: string | undefined): number {
 
 /** Map backend pool to UI `Pool` shape (amounts in same nominal units as mock for display). */
 export function mapApiPoolToUi(p: ApiPool): Pool {
-  const requested = num(p.poolSize);
-  const received = num(p.totalDeposited);
-  const aum = num(p.assetUnderManagement);
-  const allocations = (p.borrowerPools ?? []).map((b) => ({
+  const requested = num(p.poolSize) / 1e6;
+  const received = num(p.totalDeposited) / 1e6;
+  const aum = num(p.assetUnderManagement) / 1e6;
+  
+  const borrowerPools = p.borrowerPools ?? [];
+  const allocations = borrowerPools.map((b) => ({
     wallet: b.dedicatedWalletAddress,
     percentage: b.allocationBps / 100,
     fundsAssigned: received * (b.allocationBps / 10_000),
   }));
+
   const statusMap: Record<string, Pool['status']> = {
-    pending: 'active',
+    pending: 'pending',
     active: 'active',
     paused: 'paused',
     closed: 'closed',
   };
+
   return {
     id: p.id,
+    contractAddress: p.contractAddress || '',
+    fundManagerAddress: p.fundManagerAddress || '',
     name: p.name,
     symbol: p.symbol,
-    borrower: p.borrowerAddress || '',
+    borrowerAddress: p.borrowerAddress || '',
     totalRequested: requested || 1,
     totalReceived: received,
     totalRepaid: aum > received ? aum - received : 0,
+    apyBasisPoints: p.apyBasisPoints || 0,
     apy: (p.apyBasisPoints ?? 0) / 100,
+    poolSize: p.poolSize ?? '0',
+    totalDeposited: p.totalDeposited ?? '0',
+    assetUnderManagement: p.assetUnderManagement ?? '0',
     status: statusMap[p.status] ?? 'active',
     riskLevel: 'medium',
     acceptedTokens: (() => {
       const addr = p.poolTokenAddress?.trim();
       if (!addr) return ['USDC'];
-      if (addr.toLowerCase() === MOCK_USDC_ADDRESS.toLowerCase()) return ['USDC (mock)'];
+      if (addr.toLowerCase() === POOL_TOKEN_ADDRESS.toLowerCase()) return ['USDC (mock)'];
       if (/^0x[a-fA-F0-9]{40}$/i.test(addr)) return [`0x${addr.slice(2, 6)}...${addr.slice(-4)}`];
       return [addr];
     })(),
     createdAt: p.createdAt ?? new Date().toISOString(),
     txHash: p.contractAddress,
+    poolTokenAddress: p.poolTokenAddress || '',
+    poolTokenName: 'USDC',
+    lpTokenAddress: p.lpTokenAddress || '',
+    lpTokenName: p.lpTokenName || `${p.symbol} LP`,
     allocations,
+    borrowerPools: borrowerPools.map((b) => ({
+      v1PoolId: b.v1PoolId,
+      dedicatedWalletAddress: b.dedicatedWalletAddress,
+    })),
   };
 }

@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { BlockchainModule } from '../blockchain/blockchain.module';
+import { ContractsModule } from '../contracts/contracts.module';
 import { WebsocketModule } from '../websocket/websocket.module';
 import { PoolEntity } from '../entities/pool.entity';
 import { PoolDraftEntity } from '../entities/pool-draft.entity';
@@ -24,7 +24,7 @@ import { IndexerService } from './indexer.service';
       AumHistoryEntity,
       BorrowerPoolEntity,
     ]),
-    BlockchainModule,
+    ContractsModule,
     WebsocketModule,
   ],
   providers: [IndexerService],

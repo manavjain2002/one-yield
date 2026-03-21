@@ -2,8 +2,9 @@ import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 
 export interface JwtUser {
   userId: string;
-  accountId: string;
+  walletAddress: string;
   role: string;
+  username?: string;
 }
 
 export const CurrentUser = createParamDecorator(

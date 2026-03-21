@@ -15,7 +15,58 @@ import LenderPools from "./pages/lender/LenderPools";
 import LenderPortfolio from "./pages/lender/LenderPortfolio";
 import ManagerDashboard from "./pages/manager/ManagerDashboard";
 import ManagerPools from "./pages/manager/ManagerPools";
+import HistoryPage from "./pages/History";
 import NotFound from "./pages/NotFound";
+
+import '@rainbow-me/rainbowkit/styles.css';
+import { 
+  RainbowKitProvider, 
+  darkTheme,
+  connectorsForWallets
+} from '@rainbow-me/rainbowkit';
+import { 
+  metaMaskWallet, 
+  walletConnectWallet,
+  rainbowWallet,
+  coinbaseWallet 
+} from '@rainbow-me/rainbowkit/wallets';
+import { WagmiProvider, http, createConfig } from 'wagmi';
+import { hederaTestnet } from 'wagmi/chains';
+
+const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || '';
+
+const wallets = [
+  metaMaskWallet,
+  rainbowWallet,
+  coinbaseWallet,
+];
+
+if (projectId) {
+  wallets.push(walletConnectWallet);
+}
+
+const connectors = connectorsForWallets(
+  [
+    {
+      groupName: 'Recommended',
+      wallets: wallets,
+    },
+  ],
+  {
+    appName: 'OneYield',
+    projectId: projectId || '00000000000000000000000000000000', 
+  }
+);
+
+const config = createConfig({
+  connectors,
+  chains: [hederaTestnet],
+  transports: {
+    [hederaTestnet.id]: http(),
+  },
+  // Ensure we don't try to auto-connect to WalletConnect if no ID
+  ssr: true, 
+});
 
 const queryClient = new QueryClient();
 
@@ -35,6 +86,8 @@ function EventsBridge() {
   return null;
 }
 
+import { AuthOverlay } from "./components/AuthOverlay";
+
 function AppRoutes() {
   return (
     <Routes>
@@ -47,24 +100,57 @@ function AppRoutes() {
       <Route path="/lender/portfolio" element={<ProtectedRoute allowedRole="lender"><LenderPortfolio /></ProtectedRoute>} />
       <Route path="/manager" element={<ProtectedRoute allowedRole="manager"><ManagerDashboard /></ProtectedRoute>} />
       <Route path="/manager/pools" element={<ProtectedRoute allowedRole="manager"><ManagerPools /></ProtectedRoute>} />
+      
+      {/* Universal History */}
+      <Route path="/lender/history" element={<ProtectedRoute allowedRole="lender"><HistoryPage /></ProtectedRoute>} />
+      <Route path="/borrower/history" element={<ProtectedRoute allowedRole="borrower"><HistoryPage /></ProtectedRoute>} />
+      <Route path="/manager/history" element={<ProtectedRoute allowedRole="manager"><HistoryPage /></ProtectedRoute>} />
+      
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }
 
+import { ThemeProvider, useTheme } from "next-themes";
+import { lightTheme } from '@rainbow-me/rainbowkit';
+
+function RainbowKitWrapper({ children }: { children: React.ReactNode }) {
+  const { resolvedTheme } = useTheme();
+  return (
+    <RainbowKitProvider 
+      theme={resolvedTheme === 'light' ? lightTheme({
+        accentColor: 'hsl(var(--primary))',
+        borderRadius: 'large',
+      }) : darkTheme({
+        accentColor: 'hsl(var(--primary))',
+        borderRadius: 'large',
+      })}
+    >
+      {children}
+    </RainbowKitProvider>
+  );
+}
+
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <WalletProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <EventsBridge />
-          <AppRoutes />
-        </BrowserRouter>
-      </WalletProvider>
-    </TooltipProvider>
-  </QueryClientProvider>
+  <WagmiProvider config={config}>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+        <RainbowKitWrapper>
+          <TooltipProvider>
+            <WalletProvider>
+              <AuthOverlay />
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
+                <EventsBridge />
+                <AppRoutes />
+              </BrowserRouter>
+            </WalletProvider>
+          </TooltipProvider>
+        </RainbowKitWrapper>
+      </ThemeProvider>
+    </QueryClientProvider>
+  </WagmiProvider>
 );
 
 export default App;

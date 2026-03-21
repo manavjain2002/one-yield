@@ -8,7 +8,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import configuration from './config/configuration';
 import { WebsocketModule } from './websocket/websocket.module';
 import { ScreeningModule } from './screening/screening.module';
-import { BlockchainModule } from './blockchain/blockchain.module';
+import { ContractsModule } from './contracts/contracts.module';
 import { QueueModule } from './queue/queue.module';
 import { IndexerModule } from './indexer/indexer.module';
 import { OracleModule } from './oracle/oracle.module';
@@ -25,6 +25,7 @@ import { QueueJobEntity } from './entities/queue-job.entity';
 import { ContractRegistryEntity } from './entities/contract-registry.entity';
 import { IndexerStateEntity } from './entities/indexer-state.entity';
 import { UserEntity } from './entities/user.entity';
+import { BorrowerWalletEntity } from './entities/borrower-wallet.entity';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { UserEntity } from './entities/user.entity';
           ContractRegistryEntity,
           IndexerStateEntity,
           UserEntity,
+          BorrowerWalletEntity,
         ],
         synchronize: config.get<string>('nodeEnv') !== 'production',
         logging: config.get<string>('nodeEnv') === 'development',
@@ -78,7 +80,7 @@ import { UserEntity } from './entities/user.entity';
     ScheduleModule.forRoot(),
     WebsocketModule,
     ScreeningModule,
-    BlockchainModule,
+    ContractsModule,
     QueueModule,
     IndexerModule,
     OracleModule,

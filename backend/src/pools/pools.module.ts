@@ -4,10 +4,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { PoolEntity } from '../entities/pool.entity';
 import { PoolDraftEntity } from '../entities/pool-draft.entity';
 import { BorrowerPoolEntity } from '../entities/borrower-pool.entity';
+import { BorrowerWalletEntity } from '../entities/borrower-wallet.entity';
 import { TransactionRecordEntity } from '../entities/transaction-record.entity';
 import { LenderPositionEntity } from '../entities/lender-position.entity';
 import { QueueJobEntity } from '../entities/queue-job.entity';
-import { BlockchainModule } from '../blockchain/blockchain.module';
+import { ContractsModule } from '../contracts/contracts.module';
 import { QueueModule } from '../queue/queue.module';
 import { AuthModule } from '../auth/auth.module';
 import { PoolsService } from './pools.service';
@@ -25,11 +26,12 @@ import {
       PoolEntity,
       PoolDraftEntity,
       BorrowerPoolEntity,
+      BorrowerWalletEntity,
       TransactionRecordEntity,
       LenderPositionEntity,
       QueueJobEntity,
     ]),
-    BlockchainModule,
+    ContractsModule,
     QueueModule,
     AuthModule,
   ],

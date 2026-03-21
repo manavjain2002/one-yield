@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, isApiConfigured } from '@/lib/api';
 import type { TxHistory } from '@/data/mockData';
-import { mockTxHistory } from '@/data/mockData';
 type ApiTx = {
   id: string;
   txHash: string;
@@ -34,14 +33,14 @@ export function usePoolTxHistory(poolIdOrAddress: string | undefined) {
     enabled: Boolean(poolIdOrAddress),
     queryFn: async (): Promise<TxHistory[]> => {
       if (!poolIdOrAddress) return [];
-      if (!isApiConfigured()) return mockTxHistory;
+      if (!isApiConfigured()) return [];
       try {
         const { data } = await api.get<ApiTx[]>(
           `/pools/${poolIdOrAddress}/transactions`,
         );
         return (data ?? []).map(mapTx);
       } catch {
-        return mockTxHistory;
+        return [];
       }
     },
   });

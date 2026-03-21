@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, isApiConfigured } from '@/lib/api';
 import type { LenderPosition } from '@/data/mockData';
-import { mockLenderPositions } from '@/data/mockData';
 import { useWallet } from '@/contexts/WalletContext';
 
 type ApiPosition = {
@@ -11,18 +10,20 @@ type ApiPosition = {
   depositedAmount: string;
   currentValue: string;
   yieldEarned: string;
-  pool?: { name: string; contractAddress: string };
+  pool?: { name: string; contractAddress: string; poolTokenAddress: string };
 };
 
 function mapPosition(p: ApiPosition): LenderPosition {
   return {
     poolId: p.poolId,
     poolName: p.pool?.name ?? 'Pool',
-    deposited: Number(p.depositedAmount) || 0,
-    currentValue: Number(p.currentValue) || 0,
-    yield: Number(p.yieldEarned) || 0,
+    contractAddress: p.pool?.contractAddress,
+    poolTokenAddress: p.pool?.poolTokenAddress,
+    deposited: (Number(p.depositedAmount) || 0) / 1e6,
+    currentValue: (Number(p.currentValue) || 0) / 1e6,
+    yield: (Number(p.yieldEarned) || 0) / 1e6,
     pending: 0,
-    lpTokens: Number(p.lpTokenBalance) || 0,
+    lpTokens: (Number(p.lpTokenBalance) || 0) / 1e6,
   };
 }
 
@@ -32,9 +33,13 @@ export function useLenderPositions() {
   return useQuery({
     queryKey: ['lender-positions', accessToken],
     queryFn: async (): Promise<LenderPosition[]> => {
-      if (!isApiConfigured() || !accessToken) return mockLenderPositions;
-      const { data } = await api.get<ApiPosition[]>('/lender/positions');
-      return (data ?? []).map(mapPosition);
+      if (!isApiConfigured() || !accessToken) return [];
+      try {
+        const { data } = await api.get<ApiPosition[]>('/lender/positions');
+        return (data ?? []).map(mapPosition);
+      } catch {
+        return [];
+      }
     },
   });
 }

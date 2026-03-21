@@ -13,13 +13,17 @@ export class UserEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  /** Native Hedera `0.0.x` when known (optional for pure MetaMask users). */
+  /** Lowercase `0x…` EVM address for MetaMask login. Nullable for Admin/Borrower. */
   @Column({ unique: true, nullable: true })
-  hederaAccountId: string | null;
+  walletAddress: string;
 
-  /** Lowercase `0x…` EVM address for MetaMask / Hedera EVM login. */
+  /** Username for Admin/Borrower login. */
   @Column({ unique: true, nullable: true })
-  evmAddress: string | null;
+  username: string;
+
+  /** Hashed password for Admin/Borrower login. */
+  @Column({ nullable: true })
+  passwordHash: string;
 
   @Column({ type: 'varchar', length: 16 })
   role: AppUserRole;

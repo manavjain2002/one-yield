@@ -8,7 +8,7 @@ import { UserEntity } from '../entities/user.entity';
 
 export interface JwtPayload {
   sub: string;
-  accountId: string;
+  walletAddress: string;
   role: string;
 }
 
@@ -29,11 +29,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: JwtPayload) {
     const user = await this.users.findOne({ where: { id: payload.sub } });
     if (!user) throw new UnauthorizedException();
-    const accountId = user.evmAddress ?? user.hederaAccountId;
-    if (!accountId) throw new UnauthorizedException();
+    
     return {
       userId: user.id,
-      accountId,
+      walletAddress: user.walletAddress,
+      username: user.username,
       role: user.role,
     };
   }

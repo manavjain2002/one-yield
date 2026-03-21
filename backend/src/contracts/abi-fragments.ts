@@ -4,7 +4,7 @@
  */
 export const FACTORY_ABI = [
   'function createPool(string _poolName, string _poolSymbol, address _poolManager, address _poolToken, address _oracleManager, address __feeCollector, uint256 _projectedAPY, uint256 _poolSize) returns (address _poolAddress, address _fundManager)',
-  'event PoolCreated(address _pool, address indexed _poolManager, address _fundManager, address indexed _poolToken, address indexed _oracleManager, uint256 _poolAPY, uint256 _poolSize)',
+  'event PoolCreated(address _pool, address indexed _poolManager, address _assetManager, address indexed _poolToken, address indexed _oracleManager, uint256 _poolAPY, uint256 _poolSize)',
   'function totalPools() view returns (uint256)',
   'function pools(uint256) view returns (address)',
   'function pauseTarget(address target)',
@@ -16,7 +16,7 @@ export const POOL_ABI = [
   'function pause()',
   'function unpause()',
   'function updateAssetUnderManagement(uint256 aum)',
-  'function sendReserveToFundManager(uint256 amount)',
+  'function sendReserveToAssetManager(uint256 amount)',
   'function deposit(uint256 assets, address receiver) returns (uint256 shares)',
   'function withdraw(uint256 assets, address receiver, address owner) returns (uint256 shares)',
   'function redeem(uint256 shares, address receiver, address owner) returns (uint256 assets)',
@@ -29,7 +29,7 @@ export const POOL_ABI = [
   'event MinimumInvestmentLimitUpdated(address indexed _by, uint256 _prevValue, uint256 _newValue)',
 ] as const;
 
-export const FUND_MANAGER_ABI = [
+export const ASSET_MANAGER_ABI = [
   'function addPool(string _v1PoolId, uint16 _allocation, address _dedicatedWallet)',
   'function removePool(uint256 index)',
   'function updatePoolAllocation(uint256 index, uint16 allocation)',

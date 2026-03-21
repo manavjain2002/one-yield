@@ -1,5 +1,5 @@
 /**
- * MetaMask on Hedera EVM (JSON-RPC relay). Uses personal_sign; backend verifies with ethers.
+ * MetaMask on EVM. Uses personal_sign; backend verifies with ethers.
  */
 import type { PairingResult } from './types';
 
@@ -11,16 +11,16 @@ function getEthereum(): EthereumRequester | undefined {
   return (window as unknown as { ethereum?: EthereumRequester }).ethereum;
 }
 
-const HEDERA_EVM_CHAINS = {
+const CHAINS = {
   testnet: {
-    chainId: '0x128',
+    chainId: '0x128', // Hedera Testnet
     chainName: 'Hedera Testnet',
     nativeCurrency: { name: 'HBAR', symbol: 'HBAR', decimals: 18 },
     rpcUrls: ['https://testnet.hashio.io/api'],
     blockExplorerUrls: ['https://hashscan.io/testnet'],
   },
   mainnet: {
-    chainId: '0x127',
+    chainId: '0x127', // Hedera Mainnet
     chainName: 'Hedera Mainnet',
     nativeCurrency: { name: 'HBAR', symbol: 'HBAR', decimals: 18 },
     rpcUrls: ['https://mainnet.hashio.io/api'],
@@ -35,12 +35,12 @@ export async function pairMetaMask(): Promise<PairingResult> {
   }
 
   const net =
-    import.meta.env.VITE_HEDERA_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
+    import.meta.env.VITE_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
   const chain =
-    HEDERA_EVM_CHAINS[net as keyof typeof HEDERA_EVM_CHAINS] ??
-    HEDERA_EVM_CHAINS.testnet;
+    CHAINS[net as keyof typeof CHAINS] ??
+    CHAINS.testnet;
 
-  const overrideId = import.meta.env.VITE_HEDERA_EVM_CHAIN_ID as string | undefined;
+  const overrideId = import.meta.env.VITE_EVM_CHAIN_ID as string | undefined;
   const chainId = overrideId?.startsWith('0x')
     ? overrideId
     : overrideId
@@ -81,7 +81,7 @@ export async function pairMetaMask(): Promise<PairingResult> {
   }
 
   return {
-    accountId: evmAddress,
+    walletAddress: evmAddress,
     signUtf8: async (message: string) => {
       const sig = (await eth.request({
         method: 'personal_sign',

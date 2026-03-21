@@ -4,6 +4,8 @@ import { HashScanLink } from '@/components/HashScanLink';
 import { useParams, Link } from 'react-router-dom';
 import { usePool } from '@/hooks/usePool';
 import { usePoolTxHistory } from '@/hooks/useTxHistory';
+import { useRepay } from '@/hooks/useRepay';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,6 +19,8 @@ export default function PoolDetail() {
   const { poolId } = useParams();
   const { data: pool, isLoading } = usePool(poolId);
   const { data: txHistory = [] } = usePoolTxHistory(pool?.id ?? poolId);
+  const { repayLoan } = useRepay();
+  const [repayAmount, setRepayAmount] = useState('');
 
   if (isLoading) {
     return (
@@ -71,8 +75,8 @@ export default function PoolDetail() {
         {/* Overview Metrics */}
         <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
           {[
-            { label: 'Total Requested', value: `$${pool.totalRequested.toLocaleString()}` },
-            { label: 'Total Received', value: `$${pool.totalReceived.toLocaleString()}` },
+            { label: 'Target Pool Size', value: `$${Number(pool.poolSize) > 0 ? (Number(pool.poolSize) / 1e6).toLocaleString() : pool.totalRequested.toLocaleString()}` },
+            { label: 'Total Received', value: `$${Number(pool.totalDeposited) > 0 ? (Number(pool.totalDeposited) / 1e6).toLocaleString() : pool.totalReceived.toLocaleString()}` },
             { label: 'Total Repaid', value: `$${pool.totalRepaid.toLocaleString()}` },
             { label: 'Outstanding', value: `$${outstanding.toLocaleString()}` },
           ].map(m => (
@@ -107,19 +111,19 @@ export default function PoolDetail() {
           <div className="glass-card rounded-2xl p-4 sm:p-6">
             <h3 className="text-sm font-semibold sm:text-base mb-4">Child Pool Allocation</h3>
             {pieData.length > 0 ? (
-              <div className="h-52 sm:h-64">
+              <div className="h-44">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={40} outerRadius={75} paddingAngle={4} dataKey="value">
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={30} outerRadius={60} paddingAngle={4} dataKey="value">
                       {pieData.map((_, i) => (
                         <Cell key={i} fill={COLORS[i % COLORS.length]} />
                       ))}
                     </Pie>
                     <Tooltip
-                      contentStyle={{ background: 'hsl(222 47% 9%)', border: '1px solid hsl(222 30% 18%)', borderRadius: '12px', fontSize: '12px' }}
-                      labelStyle={{ color: 'hsl(210 40% 96%)' }}
-                      itemStyle={{ color: 'hsl(210 40% 96%)' }}
-                      formatter={(value: number) => [`${value}%`, 'Allocation']}
+                      contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '12px', fontSize: '10px' }}
+                      labelStyle={{ color: 'hsl(var(--foreground))' }}
+                      itemStyle={{ color: 'hsl(var(--primary))' }}
+                      formatter={(value: number) => [`${value}%`, 'Alloc']}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -172,9 +176,28 @@ export default function PoolDetail() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1 space-y-2">
               <Label className="text-xs">Amount to Repay</Label>
-              <Input type="number" placeholder="0.00" className="bg-secondary/50 border-border" />
+              <Input 
+                type="number" 
+                placeholder="0.00" 
+                className="bg-secondary/50 border-border" 
+                value={repayAmount}
+                onChange={(e) => setRepayAmount(e.target.value)}
+              />
             </div>
-            <Button className="gradient-primary rounded-xl w-full sm:w-auto">Repay Loan</Button>
+            <Button 
+              className="gradient-primary rounded-xl w-full sm:w-auto"
+              disabled={repayLoan.isPending || !repayAmount}
+              onClick={() => {
+                if (pool) {
+                  repayLoan.mutate(
+                    { pool, amount: repayAmount },
+                    { onSuccess: () => setRepayAmount('') }
+                  );
+                }
+              }}
+            >
+              {repayLoan.isPending ? 'Repaying...' : 'Repay Loan'}
+            </Button>
           </div>
         </div>
 

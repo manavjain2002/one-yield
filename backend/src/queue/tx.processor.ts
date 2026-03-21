@@ -3,20 +3,33 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { HederaExecuteService } from '../blockchain/hedera-execute.service';
+import { ContractService } from '../contracts/contract.service';
 import { EventsGateway } from '../websocket/events.gateway';
 import { QueueJobEntity } from '../entities/queue-job.entity';
 import { PoolDraftEntity } from '../entities/pool-draft.entity';
-import { HEDERA_TX_QUEUE, HederaTxJobPayload } from './tx-queue.constants';
-import { WalletSequenceService } from './wallet-sequence.service';
+import { TX_QUEUE, TxJobPayload } from './tx-queue.constants';
+import {
+  POOL_FACTORY_ABI,
+  LENDING_POOL_ABI,
+  ASSET_MANAGER_ABI,
+} from '../contracts/abis';
 
-@Processor(HEDERA_TX_QUEUE, { concurrency: 8 })
-export class HederaTxProcessor extends WorkerHost {
-  private readonly logger = new Logger(HederaTxProcessor.name);
+const ABI_MAP = {
+  factory: POOL_FACTORY_ABI,
+  pool: LENDING_POOL_ABI,
+  fund_manager: ASSET_MANAGER_ABI,
+} as const;
+
+/**
+ * Processes queued blockchain transactions one at a time
+ * to avoid nonce conflicts from the same signer.
+ */
+@Processor(TX_QUEUE, { concurrency: 1 })
+export class TxProcessor extends WorkerHost {
+  private readonly logger = new Logger(TxProcessor.name);
 
   constructor(
-    private readonly hedera: HederaExecuteService,
-    private readonly sequence: WalletSequenceService,
+    private readonly contracts: ContractService,
     private readonly events: EventsGateway,
     @InjectRepository(QueueJobEntity)
     private readonly queueJobRepo: Repository<QueueJobEntity>,
@@ -26,15 +39,17 @@ export class HederaTxProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<HederaTxJobPayload>): Promise<unknown> {
-    const { walletKey, contractId, functionName, payloadHex, poolAddress } =
-      job.data;
-      console.log('job.data', job.data);
-      console.log('walletKey', walletKey);
-      console.log('contractId', contractId);
-      console.log('functionName', functionName);
-      console.log('payloadHex', payloadHex);
-      console.log('poolAddress', poolAddress);
+  async process(job: Job<TxJobPayload>): Promise<unknown> {
+    const {
+      signerKey,
+      contractAddress,
+      abi,
+      functionName,
+      args,
+      meta,
+    } = job.data;
+
+    // Mark job as processing
     const jobEntity = await this.queueJobRepo.findOne({
       where: { jobId: job.id ?? '' },
     });
@@ -44,38 +59,45 @@ export class HederaTxProcessor extends WorkerHost {
     }
 
     try {
-      const bytes = Buffer.from(payloadHex.replace(/^0x/, ''), 'hex');
-      const result = await this.sequence.run(walletKey, () =>
-        this.hedera.executeContract({
-          walletKey,
-          contractId,
-          functionParameters: new Uint8Array(bytes),
-        }),
+      // Build contract and send tx
+      const abiArray = ABI_MAP[abi];
+      const contract = this.contracts.get(
+        contractAddress,
+        abiArray,
+        signerKey,
       );
+      const tx = await contract[functionName](...args);
+      const receipt = await tx.wait();
 
+      const txHash: string = tx.hash;
+      const status = receipt?.status === 1 ? 'confirmed' : 'failed';
+
+      // Update job record
       if (jobEntity) {
         jobEntity.status = 'done';
-        jobEntity.txHash = result.txHash;
+        jobEntity.txHash = txHash;
         jobEntity.processedAt = new Date();
         await this.queueJobRepo.save(jobEntity);
       }
 
-      if (job.data.draftId) {
+      // Link draft if this was a createPool tx
+      if (meta?.draftId) {
         await this.draftRepo.update(
-          { id: job.data.draftId },
-          { hederaTransactionId: result.transactionId },
+          { id: meta.draftId },
+          { txHash },
         );
       }
 
+      // Notify frontend via WebSocket
       this.events.emitTxUpdate({
         jobId: job.id,
-        status: 'confirmed',
-        txHash: result.txHash,
-        poolAddress,
+        status,
+        txHash,
+        poolAddress: meta?.poolId,
         functionName,
       });
 
-      return result;
+      return { txHash, status };
     } catch (err) {
       this.logger.error(`Job ${job.id} failed: ${err}`);
       if (jobEntity) {
@@ -88,7 +110,7 @@ export class HederaTxProcessor extends WorkerHost {
         jobId: job.id,
         status: 'failed',
         error: String(err),
-        poolAddress,
+        poolAddress: meta?.poolId,
         functionName,
       });
       throw err;

@@ -1,19 +1,22 @@
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { StatusBadge } from '@/components/StatusBadge';
-import { LiquidFill } from '@/components/LiquidFill';
 import { useBorrowerPoolsList } from '@/hooks/useBorrowerPools';
 import { useCreatePool } from '@/hooks/useCreatePool';
 import { useWallet } from '@/contexts/WalletContext';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp, ExternalLink, Wallet } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { getErrorMessage, isApiConfigured } from '@/lib/api';
-import { MOCK_USDC_ADDRESS } from '@/lib/chain-constants';
+import { api, getErrorMessage, isApiConfigured } from '@/lib/api';
+import { RepayModal } from '@/components/RepayModal';
+import type { Pool } from '@/data/mockData';
+import { useAccount } from 'wagmi';
+import { useConnectModal } from '@rainbow-me/rainbowkit';
 
 function usdToMockUsdcAtomic(usd: string): string {
   const n = Number(String(usd).replace(/,/g, '').trim());
@@ -23,30 +26,39 @@ function usdToMockUsdcAtomic(usd: string): string {
   return BigInt(Math.round(n * 1_000_000)).toString();
 }
 
-function sameBorrower(a: string | null, b: string): boolean {
-  if (!a) return false;
-  if (/^0x[a-fA-F0-9]{40}$/i.test(a) && /^0x[a-fA-F0-9]{40}$/i.test(b)) {
-    return a.toLowerCase() === b.toLowerCase();
-  }
-  return a === b;
-}
-
 export default function BorrowerPools() {
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
   const [symbol, setSymbol] = useState('');
   const [borrowUsd, setBorrowUsd] = useState('');
+  const [apy, setApy] = useState('');
+  const [tokenAddress, setTokenAddress] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [expandedPoolId, setExpandedPoolId] = useState<string | null>(null);
+
+  // Repay Modal State
+  const [selectedRepayPool, setSelectedRepayPool] = useState<Pool | null>(null);
+
+  const { data: tokens = [] } = useQuery({
+    queryKey: ['constants', 'tokens'],
+    queryFn: async () => {
+      const { data } = await api.get<{ symbol: string; name: string; address: string }[]>('/pools/constants/tokens');
+      return data;
+    },
+  });
 
   const { data: pools = [], isLoading, refetch } = useBorrowerPoolsList();
-  const { address, role } = useWallet();
+  const { role } = useWallet();
   const createPool = useCreatePool();
+  const { isConnected: isWeb3Connected } = useAccount();
+  const { openConnectModal } = useConnectModal();
 
-  const borrowerKey = address ?? '';
-  const borrowerPools = pools.filter((p) => sameBorrower(borrowerKey, p.borrower));
+  // Backend returns only the logged-in borrower's pools — no client-side wallet filter needed
+  const borrowerPools = pools;
 
   const handleCreate = async () => {
     if (!isApiConfigured()) {
-      toast.error('Set VITE_API_URL and connect with MetaMask to create a pool.');
+      toast.error('Backend API not reachable.');
       return;
     }
     if (role !== 'borrower') {
@@ -55,16 +67,27 @@ export default function BorrowerPools() {
     }
     try {
       const poolSize = usdToMockUsdcAtomic(borrowUsd);
+      const apyNum = parseFloat(apy);
+      if (!Number.isFinite(apyNum) || apyNum <= 0 || apyNum > 100) {
+        toast.error('Enter a valid APY between 0.01% and 100%.');
+        return;
+      }
+      const apyBasisPoints = Math.round(apyNum * 100);
       await createPool.mutateAsync({
-        name: name.trim(),
+        name: name.trim().toUpperCase(),
         symbol: symbol.trim().toUpperCase(),
         poolSize,
+        apyBasisPoints,
+        poolTokenAddress: tokenAddress || undefined,
+        file: file || undefined,
       });
-      toast.success('Pool creation queued — ROLE_MANAGER will submit to the factory.');
+      toast.success('Pool creation initiated — please wait for confirmation.');
       setShowCreate(false);
       setName('');
       setSymbol('');
       setBorrowUsd('');
+      setApy('');
+      setFile(null);
       void refetch();
     } catch (e) {
       toast.error(getErrorMessage(e));
@@ -77,62 +100,132 @@ export default function BorrowerPools() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">My Pools</h1>
-            <p className="text-sm text-muted-foreground mt-1">Manage your borrowing pools</p>
+            <p className="text-sm text-muted-foreground mt-1 font-medium">Create and manage your debt positions</p>
           </div>
           <Button
             onClick={() => setShowCreate(true)}
-            className="gradient-primary rounded-xl glow-primary"
-            disabled={!borrowerKey}
+            className="gradient-primary rounded-xl px-6 font-bold shadow-md glow-primary transition-all active:scale-95"
+            disabled={role !== 'borrower' || createPool.isPending}
           >
             <Plus className="mr-2 h-4 w-4" /> Create Pool
           </Button>
         </div>
 
-        {isLoading && (
-          <p className="text-sm text-muted-foreground">Loading pools…</p>
-        )}
+        <div className="space-y-3">
+          {borrowerPools.length > 0 ? (
+            borrowerPools.map((pool) => {
+              const isExpanded = expandedPoolId === pool.id;
+              const principal = Math.max(0, pool.totalReceived - pool.totalRepaid);
+              const coupon = principal * pool.apy / 2;
+              const outstanding = principal + coupon;
+              const nominalPoolSize = Number(pool.poolSize) / 1e6;
+              
+              return (
+                <div key={pool.id} className="glass-card rounded-2xl overflow-hidden border border-border/40 transition-all hover:border-primary/20">
+                  {/* Main Row */}
+                  <div className="flex flex-wrap items-center justify-between gap-4 p-5 sm:flex-nowrap">
+                    <div className="flex items-center gap-4 min-w-[200px]">
+                      <div className="h-10 w-10 flex items-center justify-center rounded-xl bg-primary/10 text-primary font-bold shadow-inner text-sm">
+                        {pool.symbol[0]}
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-foreground text-sm uppercase tracking-wide">{pool.name}</h3>
+                        <p className="text-[10px] text-muted-foreground font-mono">{pool.contractAddress.slice(0, 6)}...{pool.contractAddress.slice(-4)}</p>
+                      </div>
+                    </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {borrowerPools.map((pool) => {
-            const fillPct = (pool.totalReceived / pool.totalRequested) * 100;
-            return (
-              <Link
-                key={pool.id}
-                to={`/borrower/pools/${pool.id}`}
-                className="glass-card rounded-2xl p-6 transition-all hover:border-primary/30"
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="font-semibold text-foreground">{pool.name}</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {pool.symbol} · {pool.acceptedTokens.join(', ')}
-                    </p>
-                  </div>
-                  <StatusBadge status={pool.status} />
-                </div>
-                <div className="flex items-end justify-between">
-                  <div className="space-y-2">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Received</p>
-                      <p className="text-xl font-bold">${pool.totalReceived.toLocaleString()}</p>
+                    <div className="flex flex-wrap items-center gap-8 flex-1 justify-center sm:justify-start font-mono text-sm font-bold text-center sm:text-left">
+                      <div className="min-w-[100px]">
+                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-tighter mb-1">Debt Owed</p>
+                        <p className="text-foreground">${outstanding.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                      </div>
+                      <div className="min-w-[80px]">
+                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-tighter mb-1">Coupon</p>
+                        <p className="text-primary/70">${coupon.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                      </div>
+                      <div className="min-w-[60px]">
+                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-tighter mb-1">APY</p>
+                        <p className="text-success">{pool.apy}%</p>
+                      </div>
+                      <div className="min-w-[80px]">
+                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-tighter mb-1">Status</p>
+                        <StatusBadge status={pool.status} />
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Requested</p>
-                      <p className="text-sm text-muted-foreground">${pool.totalRequested.toLocaleString()}</p>
+
+                    <div className="flex items-center gap-3 w-full sm:w-auto">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setExpandedPoolId(isExpanded ? null : pool.id)}
+                        className="rounded-xl flex-1 sm:flex-none text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        {isExpanded ? <ChevronUp className="w-4 h-4 mr-1" /> : <ChevronDown className="w-4 h-4 mr-1" />}
+                        Details
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        onClick={() => {
+                          if (!isWeb3Connected) {
+                            openConnectModal?.();
+                            return;
+                          }
+                          setSelectedRepayPool(pool);
+                        }}
+                        className={`flex-1 sm:flex-none rounded-xl font-bold px-8 shadow-md transition-all active:scale-95 ${
+                          !isWeb3Connected
+                            ? 'bg-secondary text-muted-foreground border border-border/50'
+                            : 'gradient-primary glow-primary'
+                        }`}
+                        disabled={outstanding <= 0}
+                      >
+                        {!isWeb3Connected ? (
+                          <><Wallet className="w-3 h-3 mr-1.5" />Connect to Repay</>
+                        ) : 'Repay'}
+                      </Button>
                     </div>
                   </div>
-                  <LiquidFill percentage={fillPct} size="md" />
+
+                  {/* Expandable Details */}
+                  {isExpanded && (
+                    <div className="px-5 pb-5 pt-2 border-t border-border/20 bg-primary/[0.02] animate-in slide-in-from-top-2 duration-200">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 py-4">
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-muted-foreground uppercase font-black">Dedicated Wallet</p>
+                          <div className="flex items-center gap-1.5 group cursor-pointer" onClick={() => window.open(`https://hashscan.io/testnet/address/${pool.borrowerPools[0]?.dedicatedWalletAddress}`, '_blank')}>
+                            <p className="text-[10px] font-mono text-muted-foreground group-hover:text-primary">
+                              {pool.borrowerPools[0]?.dedicatedWalletAddress ? `${pool.borrowerPools[0].dedicatedWalletAddress.slice(0, 10)}...` : 'N/A'}
+                            </p>
+                            <ExternalLink className="w-2.5 h-2.5 text-muted-foreground/50 group-hover:text-primary transition-colors" />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-muted-foreground uppercase font-black">Pool Size</p>
+                          <p className="text-xs font-bold text-foreground/80">${nominalPoolSize.toLocaleString()}M</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-muted-foreground uppercase font-black">Principal Repaid</p>
+                          <p className="text-xs font-bold text-success">${pool.totalRepaid.toLocaleString()}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-muted-foreground uppercase font-black">Contract Address</p>
+                          <div className="flex items-center gap-1.5 group cursor-pointer" onClick={() => window.open(`https://hashscan.io/testnet/address/${pool.contractAddress}`, '_blank')}>
+                            <p className="text-[10px] font-mono text-muted-foreground group-hover:text-primary">{pool.contractAddress.slice(0, 10)}...</p>
+                            <ExternalLink className="w-2.5 h-2.5 text-muted-foreground/50 group-hover:text-primary transition-colors" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </Link>
-            );
-          })}
+              );
+            })
+          ) : !isLoading && (
+            <div className="py-20 text-center text-muted-foreground italic glass-card rounded-2xl border-dashed border-border/50">
+              No pools yet. Create one to get started.
+            </div>
+          )}
         </div>
-
-        {!isLoading && borrowerPools.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-8">
-            No pools yet. Create one to deploy via the factory contract (backend ROLE_MANAGER signer submits the tx).
-          </p>
-        )}
       </div>
 
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
@@ -144,20 +237,35 @@ export default function BorrowerPools() {
             <div className="space-y-2">
               <Label>Pool Name</Label>
               <Input
+                placeholder="e.g. ALPHA FUND"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Growth Fund Alpha"
+                onChange={(e) => setName(e.target.value.toUpperCase())}
                 className="bg-secondary/50 border-border"
               />
             </div>
             <div className="space-y-2">
               <Label>Symbol</Label>
               <Input
+                placeholder="e.g. ALPHA"
                 value={symbol}
-                onChange={(e) => setSymbol(e.target.value)}
-                placeholder="e.g., GFA"
+                onChange={(e) => setSymbol(e.target.value.toUpperCase())}
                 className="bg-secondary/50 border-border"
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Accepted token</Label>
+              <select
+                value={tokenAddress}
+                onChange={e => setTokenAddress(e.target.value)}
+                className="bg-secondary/50 border-border flex h-10 w-full rounded-md border text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 px-3 py-2"
+              >
+                <option value="">Select Token (Default USDC)</option>
+                {tokens.map((t) => (
+                  <option key={t.address} value={t.address}>
+                    {t.name} ({t.symbol})
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="space-y-2">
               <Label>Value to Borrow (USD, mock USDC)</Label>
@@ -174,19 +282,35 @@ export default function BorrowerPools() {
               </p>
             </div>
             <div className="space-y-2">
-              <Label>Accepted token</Label>
-              <p className="text-sm text-muted-foreground rounded-xl border border-border bg-secondary/50 px-3 py-2">
-                Mock USDC only —{' '}
-                <span className="font-mono text-xs break-all">{MOCK_USDC_ADDRESS}</span>
+              <Label>Projected APY (%)</Label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={apy}
+                onChange={(e) => setApy(e.target.value)}
+                placeholder="e.g., 8.5"
+                className="bg-secondary/50 border-border"
+              />
+              <p className="text-xs text-muted-foreground">
+                Annual Percentage Yield offered to lenders. Stored as basis points (8.5% → 850 bps).
               </p>
-              {/*
-              Multi-token selection (HBAR, USDT, …) — uncomment when supported again.
-              */}
+            </div>
+            <div className="space-y-2">
+              <Label>Supporting Document (Excel)</Label>
+              <Input
+                type="file"
+                accept=".xlsx, .xls, .csv"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                className="bg-secondary/50 border-border file:text-primary file:font-medium"
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional: Upload pool structure / compliance parameters.
+              </p>
             </div>
             <Button
               type="button"
               className="w-full gradient-primary rounded-xl mt-2"
-              disabled={createPool.isPending || !name.trim() || !symbol.trim() || !borrowUsd}
+              disabled={createPool.isPending || !name.trim() || !symbol.trim() || !borrowUsd || !apy}
               onClick={() => void handleCreate()}
             >
               {createPool.isPending ? 'Submitting…' : 'Create Pool'}
@@ -194,6 +318,20 @@ export default function BorrowerPools() {
           </div>
         </DialogContent>
       </Dialog>
+      
+      {selectedRepayPool && (
+        <RepayModal
+          isOpen={!!selectedRepayPool}
+          onClose={() => setSelectedRepayPool(null)}
+          poolId={selectedRepayPool.id}
+          v1PoolId={selectedRepayPool.borrowerPools[0]?.v1PoolId || ''}
+          poolName={selectedRepayPool.name}
+          symbol={selectedRepayPool.symbol}
+          poolTokenAddress={selectedRepayPool.poolTokenAddress}
+          fundManagerAddress={selectedRepayPool.fundManagerAddress}
+        />
+      )}
+
     </DashboardLayout>
   );
 }

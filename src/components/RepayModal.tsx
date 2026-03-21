@@ -1,0 +1,236 @@
+import React, { useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
+import { useBorrowerWeb3Actions } from '@/hooks/useBorrowerWeb3Actions';
+import { AlertCircle, ArrowRight, CheckCircle2, ChevronLeft, Wallet } from 'lucide-react';
+import { useAccount } from 'wagmi';
+import { useConnectModal } from '@rainbow-me/rainbowkit';
+import { parseUnits } from 'ethers';
+
+interface RepayModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  poolId: string;
+  v1PoolId: string;
+  poolName: string;
+  symbol: string;
+  poolTokenAddress: string;
+  fundManagerAddress: string;
+}
+
+export function RepayModal({ 
+  isOpen, onClose, poolId, v1PoolId, poolName, symbol, poolTokenAddress, fundManagerAddress 
+}: RepayModalProps) {
+  const [step, setStep] = useState<'input' | 'confirm'>('input');
+  const [amount, setAmount] = useState('');
+  const [fee, setFee] = useState('0');
+  
+  const { isConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
+
+  const { allowanceQuery, approve, repay } = useBorrowerWeb3Actions({
+    poolTokenAddress,
+    fundManagerAddress,
+    poolId
+  });
+
+  const totalHuman = (parseFloat(amount) || 0) + (parseFloat(fee) || 0);
+  
+  // Convert to BigInt for allowance comparison
+  let totalWei = 0n;
+  try {
+    totalWei = parseUnits(totalHuman.toString() || '0', 6);
+  } catch {
+    // ignore parse errors while typing
+  }
+
+  const allowanceWei = allowanceQuery.data ?? 0n;
+  const needsApproval = totalWei > 0n && allowanceWei < totalWei;
+  const isPending = approve.isPending || repay.isPending;
+
+  const handleNext = () => {
+    if (!amount || parseFloat(amount) <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+    setStep('confirm');
+  };
+
+  const handleActionClick = async () => {
+    if (!isConnected) {
+      openConnectModal?.();
+      return;
+    }
+
+    if (needsApproval) {
+      try {
+        await approve.mutateAsync(totalHuman.toString());
+      } catch {
+        // Error handled in hook
+      }
+      return;
+    }
+
+    // Ready to repay
+    try {
+      await repay.mutateAsync({
+        v1PoolId,
+        amount,
+        fee
+      });
+      onClose();
+      reset();
+    } catch {
+      // Error handled in hook
+    }
+  };
+
+  const reset = () => {
+    setStep('input');
+    setAmount('');
+    setFee('0');
+  };
+
+  const handleClose = () => {
+    if (isPending) return;
+    onClose();
+    reset();
+  };
+
+  // Determine button text and state
+  let buttonText = 'Confirm Repayment';
+  if (step === 'input') {
+    buttonText = 'Next Step';
+  } else if (!isConnected) {
+    buttonText = 'Connect Wallet to Repay';
+  } else if (approve.isPending) {
+    buttonText = 'Approving...';
+  } else if (needsApproval) {
+    buttonText = `Approve ${symbol}`;
+  } else if (repay.isPending) {
+    buttonText = 'Processing...';
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md glass-card border-border/50 p-0 overflow-hidden">
+        <div className="gradient-primary h-1.5 w-full" />
+        
+        <div className="p-6 space-y-6">
+          <DialogHeader>
+            <DialogTitle className="text-xl flex items-center gap-2">
+              <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                <Wallet className="w-5 h-5" />
+              </div>
+              {step === 'input' ? 'Repay Loan' : 'Confirm Repayment'}
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">{poolName}</p>
+          </DialogHeader>
+
+          {step === 'input' ? (
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+              <div className="space-y-2">
+                <Label htmlFor="amount" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Amount to Repay</Label>
+                <div className="relative">
+                  <Input
+                    id="amount"
+                    type="number"
+                    placeholder="0.00"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="h-12 pr-16 rounded-xl bg-secondary/30 focus:bg-secondary/50 transition-all border-border/50 text-lg font-bold font-mono"
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-primary px-2 py-1 rounded bg-primary/10">
+                    {symbol}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <Label htmlFor="fee" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Fee (Optional)</Label>
+                  <span className="text-[10px] text-muted-foreground flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Usually 0</span>
+                </div>
+                <div className="relative">
+                  <Input
+                    id="fee"
+                    type="number"
+                    placeholder="0.00"
+                    value={fee}
+                    onChange={(e) => setFee(e.target.value)}
+                    className="h-10 pr-16 rounded-xl bg-secondary/20 focus:bg-secondary/40 transition-all border-border/50 font-mono"
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">
+                    {symbol}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-primary/5 border border-primary/10 flex gap-3 items-start">
+                <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Repaying reduces your outstanding debt and stops interest accrual on the repaid principal.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
+              <div className="space-y-4 rounded-2xl bg-secondary/30 p-5 border border-border/50">
+                <div className="flex justify-between items-center pb-3 border-b border-border/20">
+                  <span className="text-sm text-muted-foreground">Repayment Amount</span>
+                  <span className="font-bold font-mono">{parseFloat(amount).toLocaleString()} {symbol}</span>
+                </div>
+                <div className="flex justify-between items-center pb-3 border-b border-border/20">
+                  <span className="text-sm text-muted-foreground">Transaction Fee</span>
+                  <span className="font-bold font-mono">{parseFloat(fee || '0').toLocaleString()} {symbol}</span>
+                </div>
+                <div className="flex justify-between items-center pt-2">
+                  <span className="text-sm font-bold text-foreground">Total to Send</span>
+                  <span className="text-xl font-black text-primary font-mono">{totalHuman.toLocaleString()} {symbol}</span>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/10 flex gap-3 items-start">
+                <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700/80 leading-relaxed font-medium">
+                  This transaction will execute directly from your Web3 wallet. Ensure you have the required balance and {symbol} allowance.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 pt-2">
+            {step === 'confirm' && (
+              <Button 
+                variant="ghost" 
+                onClick={() => setStep('input')} 
+                disabled={isPending} 
+                className="rounded-xl flex-1 h-12 font-bold text-muted-foreground"
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" /> Back
+              </Button>
+            )}
+            
+            <Button 
+              onClick={step === 'input' ? handleNext : handleActionClick} 
+              disabled={isPending}
+              className={`rounded-xl h-12 font-bold shadow-lg transition-all active:scale-95 ${
+                step === 'confirm' ? 'flex-[2] gradient-primary glow-primary' : 'w-full gradient-primary'
+              }`}
+            >
+              {step === 'input' ? (
+                <>Next Step <ArrowRight className="w-4 h-4 ml-2" /></>
+              ) : (
+                buttonText
+              )}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+

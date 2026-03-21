@@ -7,10 +7,11 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { PublicKey } from '@hashgraph/sdk';
 import { verifyMessage } from 'ethers';
 import { UserEntity } from '../entities/user.entity';
 import { randomBytes } from 'crypto';
+import * as bcrypt from 'bcrypt';
+import { OnModuleInit } from '@nestjs/common';
 
 interface ChallengeEntry {
   message: string;
@@ -18,7 +19,7 @@ interface ChallengeEntry {
 }
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
   private readonly challenges = new Map<string, ChallengeEntry>();
 
   constructor(
@@ -30,6 +31,22 @@ export class AuthService {
     setInterval(() => this.pruneChallenges(), 60_000);
   }
 
+  async onModuleInit() {
+    const adminUsername = 'oyAdmin';
+    const adminPassword = this.config.get<string>('ADMIN_PASSWORD') || 'oy-admin-password-456';
+    
+    let admin = await this.users.findOne({ where: { username: adminUsername } });
+    if (!admin) {
+      const passwordHash = await bcrypt.hash(adminPassword, 10);
+      admin = this.users.create({
+        username: adminUsername,
+        passwordHash,
+        role: 'manager', 
+      });
+      await this.users.save(admin);
+    }
+  }
+
   private pruneChallenges() {
     const now = Date.now();
     for (const [id, c] of this.challenges) {
@@ -37,9 +54,9 @@ export class AuthService {
     }
   }
 
-  createChallenge(accountId: string) {
+  createChallenge(walletAddress: string) {
     const challengeId = randomBytes(16).toString('hex');
-    const message = `OneYield auth: ${challengeId} for ${accountId} at ${Date.now()}`;
+    const message = `OneYield auth: ${challengeId} for ${walletAddress} at ${Date.now()}`;
     this.challenges.set(challengeId, {
       message,
       expires: Date.now() + 5 * 60_000,
@@ -47,98 +64,12 @@ export class AuthService {
     return { challengeId, message };
   }
 
-  private isEvmAddress(accountId: string): boolean {
-    return /^0x[a-fA-F0-9]{40}$/.test(accountId.trim());
-  }
-
-  private mirrorBaseUrl(): string {
-    return (
-      this.config.get<string>('hedera.mirrorNodeUrl') ??
-      'https://testnet.mirrornode.hedera.com'
-    );
-  }
-
-  /** Raw mirror account JSON (by 0.0.x, alias, or 0x EVM address). */
-  private async fetchMirrorAccountJson(idOrEvm: string): Promise<{
-    account?: string;
-    key?: { key?: string };
-    evm_address?: string;
-  }> {
-    const url = `${this.mirrorBaseUrl()}/api/v1/accounts/${encodeURIComponent(idOrEvm)}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new UnauthorizedException('Account not found on mirror');
-    }
-    return (await res.json()) as {
-      account?: string;
-      key?: { key?: string };
-      evm_address?: string;
-    };
-  }
-
-  /**
-   * Optional: map EVM → Hedera `0.0.x` when mirror has the account.
-   * MetaMask users can use the app without this.
-   */
-  private async tryResolveEvmToHederaAccountId(
-    evmAddress: string,
-  ): Promise<string | null> {
-    try {
-      const data = await this.fetchMirrorAccountJson(evmAddress.trim());
-      const hederaAccountId = data.account;
-      if (!hederaAccountId) return null;
-      if (data.evm_address) {
-        const a = data.evm_address.replace(/^0x/i, '').toLowerCase();
-        const b = evmAddress.replace(/^0x/i, '').toLowerCase();
-        if (a !== b) return null;
-      }
-      return hederaAccountId;
-    } catch {
-      return null;
-    }
-  }
-
-  /** Native Hedera wallets: require mirror `key` for signature verification. */
-  private async mirrorAccountWithPublicKey(idOrAlias: string): Promise<{
-    hederaAccountId: string;
-    keyString: string;
-  }> {
-    const data = await this.fetchMirrorAccountJson(idOrAlias);
-    const hederaAccountId = data.account;
-    const k = data.key?.key;
-    if (!hederaAccountId) {
-      throw new UnauthorizedException('Account not found on mirror');
-    }
-    if (!k) throw new UnauthorizedException('No public key on account');
-    return { hederaAccountId, keyString: k };
-  }
-
-  private async fetchMirrorPublicKey(accountId: string): Promise<PublicKey> {
-    const { keyString } = await this.mirrorAccountWithPublicKey(accountId);
-    return PublicKey.fromString(keyString);
-  }
-
-  private async findUserByWalletRef(walletRef: string): Promise<UserEntity | null> {
-    const w = walletRef.trim();
-    if (this.isEvmAddress(w)) {
-      return this.users.findOne({
-        where: { evmAddress: w.toLowerCase() },
-      });
-    }
-    return this.users.findOne({ where: { hederaAccountId: w } });
-  }
-
-  /** Primary wallet string for JWT / on-chain borrower id (prefer EVM when present). */
-  private walletAccountIdForJwt(user: UserEntity): string {
-    const id = user.evmAddress ?? user.hederaAccountId;
-    if (!id) {
-      throw new Error('User has no wallet identifiers');
-    }
-    return id;
+  private isEvmAddress(address: string): boolean {
+    return /^0x[a-fA-F0-9]{40}$/.test(address.trim());
   }
 
   async verifyAndLogin(params: {
-    accountId: string;
+    walletAddress: string;
     challengeId: string;
     signatureHex: string;
   }) {
@@ -148,102 +79,118 @@ export class AuthService {
     }
     this.challenges.delete(params.challengeId);
 
-    if (this.isEvmAddress(params.accountId)) {
-      const sigHex = params.signatureHex.trim().replace(/^0x/i, '');
-      let recovered: string;
-      try {
-        recovered = verifyMessage(entry.message, `0x${sigHex}`);
-      } catch {
-        throw new UnauthorizedException('Invalid signature');
-      }
-      if (recovered.toLowerCase() !== params.accountId.toLowerCase()) {
-        throw new UnauthorizedException('Invalid signature');
-      }
-
-      const evm = params.accountId.toLowerCase();
-      const mirrorHedera = await this.tryResolveEvmToHederaAccountId(
-        params.accountId,
-      );
-
-      let user = await this.users.findOne({ where: { evmAddress: evm } });
-      if (!user && mirrorHedera) {
-        user = await this.users.findOne({
-          where: { hederaAccountId: mirrorHedera },
-        });
-        if (user && !user.evmAddress) {
-          user.evmAddress = evm;
-          await this.users.save(user);
-        }
-      }
-
-      if (!user) {
-        user = this.users.create({
-          evmAddress: evm,
-          hederaAccountId: mirrorHedera,
-          role: 'lender',
-        });
-        await this.users.save(user);
-      } else if (mirrorHedera && !user.hederaAccountId) {
-        user.hederaAccountId = mirrorHedera;
-        await this.users.save(user);
-      }
-
-      const walletAccountId = this.walletAccountIdForJwt(user);
-      const accessToken = await this.jwt.signAsync({
-        sub: user.id,
-        accountId: walletAccountId,
-        role: user.role,
-      });
-
-      return {
-        accessToken,
-        role: user.role,
-        accountId: walletAccountId,
-      };
+    if (!this.isEvmAddress(params.walletAddress)) {
+      throw new UnauthorizedException('Only EVM addresses are supported');
     }
 
-    const pub = await this.fetchMirrorPublicKey(params.accountId);
-    const message = Buffer.from(entry.message, 'utf8');
-    const sig = Buffer.from(params.signatureHex.replace(/^0x/i, ''), 'hex');
-    const ok = pub.verify(message, sig);
-    if (!ok) {
+    const sigHex = params.signatureHex.trim().replace(/^0x/i, '');
+    let recovered: string;
+    try {
+      recovered = verifyMessage(entry.message, `0x${sigHex}`);
+    } catch {
+      throw new UnauthorizedException('Invalid signature');
+    }
+    if (recovered.toLowerCase() !== params.walletAddress.toLowerCase()) {
       throw new UnauthorizedException('Invalid signature');
     }
 
-    const canonicalAccountId = params.accountId;
-    let user = await this.users.findOne({
-      where: { hederaAccountId: canonicalAccountId },
-    });
+    const evm = params.walletAddress.toLowerCase();
+
+    let user = await this.users.findOne({ where: { walletAddress: evm } });
+
     if (!user) {
       user = this.users.create({
-        hederaAccountId: canonicalAccountId,
-        evmAddress: null,
+        walletAddress: evm,
         role: 'lender',
       });
       await this.users.save(user);
     }
 
-    const walletAccountId = this.walletAccountIdForJwt(user);
     const accessToken = await this.jwt.signAsync({
       sub: user.id,
-      accountId: walletAccountId,
+      walletAddress: user.walletAddress,
       role: user.role,
     });
 
     return {
       accessToken,
       role: user.role,
-      accountId: walletAccountId,
+      walletAddress: user.walletAddress,
     };
   }
 
   async setRole(walletRef: string, role: UserEntity['role']) {
-    const user = await this.findUserByWalletRef(walletRef);
+    const w = walletRef.trim().toLowerCase();
+    const user = await this.users.findOne({
+      where: { walletAddress: w },
+    });
     if (!user) {
       throw new NotFoundException('User not found');
     }
     user.role = role;
     await this.users.save(user);
-    return user;
+
+    const accessToken = await this.jwt.signAsync({
+      sub: user.id,
+      walletAddress: user.walletAddress,
+      role: user.role,
+    });
+
+    return {
+      accessToken,
+      role: user.role,
+      walletAddress: user.walletAddress,
+    };
+  }
+
+  async registerWithCredentials(username: string, passwordPlain: string, role: UserEntity['role']) {
+    const existing = await this.users.findOne({ where: { username } });
+    if (existing) {
+      throw new UnauthorizedException('Username already taken');
+    }
+    const passwordHash = await bcrypt.hash(passwordPlain, 10);
+    const user = this.users.create({
+      username,
+      passwordHash,
+      role,
+    });
+    await this.users.save(user);
+
+    const accessToken = await this.jwt.signAsync({
+      sub: user.id,
+      username: user.username,
+      walletAddress: user.walletAddress,
+      role: user.role,
+    });
+
+    return {
+      accessToken,
+      role: user.role,
+      username: user.username,
+    };
+  }
+
+  async loginWithCredentials(username: string, passwordPlain: string) {
+    const user = await this.users.findOne({ where: { username } });
+    if (!user || !user.passwordHash) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    const isMatch = await bcrypt.compare(passwordPlain, user.passwordHash);
+    if (!isMatch) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const accessToken = await this.jwt.signAsync({
+      sub: user.id,
+      username: user.username,
+      walletAddress: user.walletAddress,
+      role: user.role,
+    });
+
+    return {
+      accessToken,
+      role: user.role,
+      username: user.username,
+    };
   }
 }

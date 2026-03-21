@@ -2,7 +2,12 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ContractEncodeService } from '../blockchain/contract-encode.service';
+import { ContractService } from '../contracts/contract.service';
+import {
+  POOL_FACTORY_ABI,
+  LENDING_POOL_ABI,
+  ASSET_MANAGER_ABI,
+} from '../contracts/abis';
 import { PoolEntity } from '../entities/pool.entity';
 import { PoolDraftEntity } from '../entities/pool-draft.entity';
 import { ContractRegistryEntity } from '../entities/contract-registry.entity';
@@ -12,25 +17,11 @@ import { LenderPositionEntity } from '../entities/lender-position.entity';
 import { AumHistoryEntity } from '../entities/aum-history.entity';
 import { BorrowerPoolEntity } from '../entities/borrower-pool.entity';
 import { EventsGateway } from '../websocket/events.gateway';
-import { evmAddressToContractId, topicToEvmAddress } from './evm-topic.util';
 
-interface MirrorLog {
-  transaction_id?: string;
-  consensus_timestamp?: string;
-  data: string;
-  topics?: string[];
-  contract_id?: string;
-}
-
-interface MirrorLogsResponse {
-  logs?: MirrorLog[];
-  links?: { next?: string };
-}
-
-function normalizeTxId(a: string, b: string): boolean {
-  return a.replace(/\s/g, '') === b.replace(/\s/g, '');
-}
-
+/**
+ * Polls on-chain event logs using standard ethers.js getLogs
+ * and updates the database accordingly.
+ */
 @Injectable()
 export class IndexerService implements OnModuleInit {
   private readonly logger = new Logger(IndexerService.name);
@@ -39,7 +30,7 @@ export class IndexerService implements OnModuleInit {
 
   constructor(
     private readonly config: ConfigService,
-    private readonly encode: ContractEncodeService,
+    private readonly contracts: ContractService,
     @InjectRepository(PoolEntity)
     private readonly pools: Repository<PoolEntity>,
     @InjectRepository(PoolDraftEntity)
@@ -77,170 +68,169 @@ export class IndexerService implements OnModuleInit {
     }
   }
 
-  private mirrorBase(): string {
-    return (
-      this.config.get<string>('hedera.mirrorNodeUrl') ??
-      'https://testnet.mirrornode.hedera.com'
-    );
-  }
-
-  private async ensureFactoryRegistry() {
-    const factoryId = this.config.get<string>('hedera.factoryContractId');
-    if (!factoryId || factoryId === '0.0.0') return;
-    const exists = await this.registry.findOne({
-      where: { address: factoryId },
-    });
-    if (!exists) {
-      await this.registry.save({
-        type: 'factory',
-        address: factoryId,
-        implementationAddress: null,
-        deployedAt: new Date(),
-        version: 1,
-      });
-    }
-  }
+  // ─── Main Poll Loop ────────────────────────────────────────
 
   async poll() {
     await this.ensureFactoryRegistry();
-    const factoryId = this.config.get<string>('hedera.factoryContractId');
+
     const addresses = new Set<string>();
-    if (factoryId && factoryId !== '0.0.0') addresses.add(factoryId);
+
+    // Always index the factory
+    try {
+      const factoryAddr = this.contracts.factoryAddress();
+      addresses.add(factoryAddr.toLowerCase());
+    } catch {
+      // Factory not configured — skip
+    }
+
+    // Index all known pool + fund manager contracts
     const poolRows = await this.pools.find();
     for (const p of poolRows) {
-      addresses.add(p.contractAddress);
-      addresses.add(p.fundManagerAddress);
+      addresses.add(p.contractAddress.toLowerCase());
+      addresses.add(p.fundManagerAddress.toLowerCase());
     }
+
     for (const addr of addresses) {
+      if (!addr || addr === 'undefined' || addr === 'null') continue;
       await this.indexContract(addr);
     }
   }
 
-  private async getState(contract: string): Promise<IndexerStateEntity> {
-    let s = await this.indexerState.findOne({
-      where: { contractAddress: contract },
-    });
-    if (!s) {
-      s = this.indexerState.create({
-        contractAddress: contract,
-        lastConsensusTimestamp: '0',
-      });
-      await this.indexerState.save(s);
-    }
-    return s;
-  }
+  // ─── Per-Contract Indexing ─────────────────────────────────
 
-  private async indexContract(contractId: string) {
-    const state = await this.getState(contractId);
-    const base = this.mirrorBase();
-    const ts = state.lastConsensusTimestamp || '0';
-    const url = `${base}/api/v1/contracts/${contractId}/results/logs?order=asc&limit=100&timestamp=gte:${ts}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      this.logger.warn(`Mirror logs ${contractId}: ${res.status}`);
+  private async indexContract(contractAddress: string) {
+    const state = await this.getState(contractAddress);
+    const provider = this.contracts.getProvider();
+    const fromBlock = Number(state.lastBlockNumber) + 1;
+
+    let latestBlock: number;
+    try {
+      latestBlock = await provider.getBlockNumber();
+    } catch (e) {
+      this.logger.warn(`Failed to get block number: ${e}`);
       return;
     }
-    const body = (await res.json()) as MirrorLogsResponse;
-    const logs = body.logs ?? [];
-    let maxTs = ts;
-    for (const log of logs) {
-      if (log.consensus_timestamp && log.consensus_timestamp > maxTs) {
-        maxTs = log.consensus_timestamp;
+
+    if (fromBlock > latestBlock) return;
+
+    // Limit to 2000 blocks per poll to avoid RPC timeouts
+    const toBlock = Math.min(fromBlock + 2000, latestBlock);
+
+    try {
+      let logs: any[] = [];
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          logs = await provider.getLogs({
+            address: contractAddress,
+            fromBlock,
+            toBlock,
+          });
+          break;
+        } catch (e: any) {
+          retries--;
+          if (retries === 0) throw e;
+          this.logger.warn(`RPC error getting logs for ${contractAddress}, retrying... (${retries} left)`);
+          await new Promise((r) => setTimeout(r, 2000));
+        }
       }
-      await this.processLog(contractId, log);
-    }
-    if (maxTs !== ts) {
-      state.lastConsensusTimestamp = maxTs;
+
+      for (const log of logs) {
+        await this.processLog(contractAddress, log);
+      }
+
+      state.lastBlockNumber = String(toBlock);
       await this.indexerState.save(state);
+      this.events.emitIndexerSync({
+        contractId: contractAddress,
+        processed: logs.length,
+        fromBlock,
+        toBlock,
+      });
+    } catch (e) {
+      this.logger.warn(`getLogs final failure for ${contractAddress}: ${e}`);
     }
-    this.events.emitIndexerSync({ contractId, processed: logs.length });
   }
 
-  private normalizeTopics(topics: string[] | undefined): string[] {
-    if (!topics?.length) return [];
-    return topics.map((t) => (t.startsWith('0x') ? t : `0x${t}`));
+  // ─── Log Processing ────────────────────────────────────────
+
+  private async processLog(
+    contractAddress: string,
+    log: { topics: readonly string[]; data: string; transactionHash: string; blockNumber: number },
+  ) {
+    const txHash = log.transactionHash;
+    const blockNumber = log.blockNumber;
+    const topics = [...log.topics];
+
+    // Try Factory events
+    const factoryEvent = this.contracts.parseLog(POOL_FACTORY_ABI, {
+      topics,
+      data: log.data,
+    });
+    if (factoryEvent?.name === 'PoolCreated') {
+      await this.handlePoolCreated(txHash, blockNumber, factoryEvent);
+      return;
+    }
+
+    // Try Pool events
+    const poolEvent = this.contracts.parseLog(LENDING_POOL_ABI, {
+      topics,
+      data: log.data,
+    });
+    if (poolEvent) {
+      switch (poolEvent.name) {
+        case 'Deposit':
+          await this.handleDeposit(contractAddress, txHash, blockNumber, poolEvent);
+          return;
+        case 'Withdraw':
+          await this.handleWithdraw(contractAddress, txHash, blockNumber, poolEvent);
+          return;
+        case 'AssetUnderManagementUpdated':
+          await this.handleAum(contractAddress, txHash, blockNumber, poolEvent);
+          return;
+        case 'PoolStatusUpdated':
+          await this.handlePoolStatus(contractAddress, poolEvent);
+          return;
+      }
+    }
+
+    // Try FundManager events
+    const fmEvent = this.contracts.parseLog(ASSET_MANAGER_ABI, {
+      topics,
+      data: log.data,
+    });
+    if (fmEvent?.name === 'V1PoolAdded') {
+      await this.handleV1PoolAdded(contractAddress, fmEvent);
+    }
   }
 
-  private async processLog(contractId: string, log: MirrorLog) {
-    const topics = this.normalizeTopics(log.topics);
-    const data = log.data?.startsWith('0x') ? log.data : `0x${log.data ?? ''}`;
-    const txId = log.transaction_id ?? 'unknown';
-    const parsedFactory = this.encode.decodePoolCreated({ topics, data });
-    if (parsedFactory?.name === 'PoolCreated') {
-      await this.handlePoolCreated(log, parsedFactory as any);
-      return;
-    }
-    const parsedDeposit = this.encode.decodeDeposit({ topics, data });
-    if (parsedDeposit?.name === 'Deposit') {
-      await this.handleDeposit(contractId, txId, parsedDeposit as any);
-      return;
-    }
-    const parsedWithdraw = this.encode.decodeWithdraw({ topics, data });
-    if (parsedWithdraw?.name === 'Withdraw') {
-      await this.handleWithdraw(contractId, txId, parsedWithdraw as any);
-      return;
-    }
-    const parsedAum = this.encode.decodeAssetUnderManagement({
-      topics,
-      data,
-    });
-    if (parsedAum?.name === 'AssetUnderManagementUpdated') {
-      await this.handleAum(contractId, txId, parsedAum as any);
-      return;
-    }
-    const parsedStatus = this.encode.decodePoolStatusUpdated({
-      topics,
-      data,
-    });
-    if (parsedStatus?.name === 'PoolStatusUpdated') {
-      await this.handlePoolStatus(contractId, parsedStatus as any);
-      return;
-    }
-    const parsedV1 = this.encode.decodeV1PoolAdded({ topics, data });
-    if (parsedV1?.name === 'V1PoolAdded') {
-      await this.handleV1PoolAdded(contractId, parsedV1 as any);
-      return;
-    }
-  }
+  // ─── Event Handlers ────────────────────────────────────────
 
   private async handlePoolCreated(
-    log: MirrorLog,
-    parsed: { args: { _pool: string; _fundManager: string; _poolAPY: bigint; _poolSize: bigint } },
+    txHash: string,
+    blockNumber: number,
+    parsed: { args: Record<string, unknown> },
   ) {
-    const txId = log.transaction_id ?? '';
-    const poolEvm =
-      typeof parsed.args._pool === 'string'
-        ? parsed.args._pool
-        : (parsed.args as unknown as { _pool: string })._pool;
-    const fmEvm =
-      typeof parsed.args._fundManager === 'string'
-        ? parsed.args._fundManager
-        : (parsed.args as unknown as { _fundManager: string })._fundManager;
-    const poolAddr = evmAddressToContractId(
-      poolEvm.startsWith('0x') ? poolEvm : `0x${poolEvm}`,
-    );
-    const fmAddr = evmAddressToContractId(
-      fmEvm.startsWith('0x') ? fmEvm : `0x${fmEvm}`,
-    );
+    const poolAddr = String(parsed.args._pool).toLowerCase();
+    const fmAddr = String(parsed.args._fundManager).toLowerCase();
+    const apy = Number(parsed.args._poolAPY ?? 0);
+    const size = String(parsed.args._poolSize ?? '0');
+
+    // Skip if already indexed
     const existing = await this.pools.findOne({
       where: { contractAddress: poolAddr },
     });
     if (existing) return;
 
-    const draft = await this.drafts
+    // Try to correlate with a draft by txHash
+    const drafts = await this.drafts
       .createQueryBuilder('d')
       .where('d.indexed = false')
-      .andWhere('d.hederaTransactionId IS NOT NULL')
+      .andWhere('d.txHash IS NOT NULL')
       .getMany();
-    const match = draft.find(
-      (d) =>
-        d.hederaTransactionId &&
-        txId &&
-        normalizeTxId(d.hederaTransactionId, txId),
+    const match = drafts.find(
+      (d) => d.txHash && d.txHash.toLowerCase() === txHash.toLowerCase(),
     );
-
-    const apy = Number(parsed.args._poolAPY ?? 0n);
-    const size = (parsed.args._poolSize ?? 0n).toString();
 
     const pool = this.pools.create({
       contractAddress: poolAddr,
@@ -259,53 +249,46 @@ export class IndexerService implements OnModuleInit {
       oracleManagerAddress: match?.oracleManagerAddress ?? null,
     });
     await this.pools.save(pool);
+
     if (match) {
       match.indexed = true;
       await this.drafts.save(match);
     }
+
+    // Register contracts
     await this.registry.save([
-      {
-        type: 'pool',
-        address: poolAddr,
-        implementationAddress: null,
-        deployedAt: new Date(),
-        version: 1,
-      },
-      {
-        type: 'fund_manager',
-        address: fmAddr,
-        implementationAddress: null,
-        deployedAt: new Date(),
-        version: 1,
-      },
+      { type: 'pool' as const, address: poolAddr, implementationAddress: null, deployedAt: new Date(), version: 1 },
+      { type: 'fund_manager' as const, address: fmAddr, implementationAddress: null, deployedAt: new Date(), version: 1 },
     ]);
-    await this.saveTx(txId, 'create_pool', poolAddr, 'confirmed');
+
+    await this.getState(poolAddr, String(blockNumber));
+    await this.getState(fmAddr, String(blockNumber));
+
+    await this.saveTx(txHash, 'create_pool', poolAddr, 'confirmed', undefined, blockNumber);
   }
 
   private async handleDeposit(
     poolContract: string,
-    txId: string,
-    parsed: { args: { owner: string; assets: bigint; shares: bigint } },
+    txHash: string,
+    blockNumber: number,
+    parsed: { args: Record<string, unknown> },
   ) {
-    const ownerTopic = parsed.args.owner;
-    const owner =
-      typeof ownerTopic === 'string' && ownerTopic.startsWith('0x')
-        ? ownerTopic
-        : topicToEvmAddress(String(ownerTopic));
-    const ownerId = evmAddressToContractId(owner);
+    const owner = String(parsed.args.owner).toLowerCase();
+    const assets = String(parsed.args.assets ?? '0');
+    const shares = String(parsed.args.shares ?? '0');
+
     const pool = await this.pools.findOne({
       where: { contractAddress: poolContract },
     });
     if (!pool) return;
-    const assets = (parsed.args.assets ?? 0n).toString();
-    const shares = (parsed.args.shares ?? 0n).toString();
+
     let pos = await this.positions.findOne({
-      where: { poolId: pool.id, lenderAddress: ownerId },
+      where: { poolId: pool.id, lenderAddress: owner },
     });
     if (!pos) {
       pos = this.positions.create({
         poolId: pool.id,
-        lenderAddress: ownerId,
+        lenderAddress: owner,
         lpTokenBalance: '0',
         depositedAmount: '0',
         currentValue: '0',
@@ -313,106 +296,93 @@ export class IndexerService implements OnModuleInit {
         firstDepositAt: new Date(),
       });
     }
-    pos.lpTokenBalance = (
-      BigInt(pos.lpTokenBalance) + BigInt(shares)
-    ).toString();
-    pos.depositedAmount = (
-      BigInt(pos.depositedAmount) + BigInt(assets)
-    ).toString();
-    pos.currentValue = (
-      BigInt(pos.currentValue) + BigInt(assets)
-    ).toString();
+    pos.lpTokenBalance = (BigInt(pos.lpTokenBalance) + BigInt(shares)).toString();
+    pos.depositedAmount = (BigInt(pos.depositedAmount) + BigInt(assets)).toString();
+    pos.currentValue = (BigInt(pos.currentValue) + BigInt(assets)).toString();
     pos.lastUpdatedAt = new Date();
     await this.positions.save(pos);
-    await this.saveTx(txId, 'deposit', poolContract, 'confirmed', assets);
+
+    await this.saveTx(txHash, 'deposit', poolContract, 'confirmed', assets, blockNumber);
   }
 
   private async handleWithdraw(
     poolContract: string,
-    txId: string,
-    parsed: { args: { owner: string; assets: bigint; shares: bigint } },
+    txHash: string,
+    blockNumber: number,
+    parsed: { args: Record<string, unknown> },
   ) {
-    const ownerRaw = parsed.args.owner;
-    const owner =
-      typeof ownerRaw === 'string' && ownerRaw.startsWith('0x')
-        ? ownerRaw
-        : topicToEvmAddress(String(ownerRaw));
-    const ownerId = evmAddressToContractId(owner);
+    const owner = String(parsed.args.owner).toLowerCase();
+    const assets = String(parsed.args.assets ?? '0');
+    const shares = String(parsed.args.shares ?? '0');
+
     const pool = await this.pools.findOne({
       where: { contractAddress: poolContract },
     });
     if (!pool) return;
-    const assets = (parsed.args.assets ?? 0n).toString();
-    const shares = (parsed.args.shares ?? 0n).toString();
+
     const pos = await this.positions.findOne({
-      where: { poolId: pool.id, lenderAddress: ownerId },
+      where: { poolId: pool.id, lenderAddress: owner },
     });
     if (pos) {
-      pos.lpTokenBalance = (
-        BigInt(pos.lpTokenBalance) - BigInt(shares)
-      ).toString();
-      pos.currentValue = (
-        BigInt(pos.currentValue) - BigInt(assets)
-      ).toString();
+      pos.lpTokenBalance = (BigInt(pos.lpTokenBalance) - BigInt(shares)).toString();
+      pos.currentValue = (BigInt(pos.currentValue) - BigInt(assets)).toString();
       pos.lastUpdatedAt = new Date();
       await this.positions.save(pos);
     }
-    await this.saveTx(txId, 'withdraw', poolContract, 'confirmed', assets);
+
+    await this.saveTx(txHash, 'withdraw', poolContract, 'confirmed', assets, blockNumber);
   }
 
   private async handleAum(
     poolContract: string,
-    txId: string,
-    parsed: { args: { _newValue: bigint } },
+    txHash: string,
+    blockNumber: number,
+    parsed: { args: Record<string, unknown> },
   ) {
+    const newVal = String(parsed.args._newValue ?? '0');
     const pool = await this.pools.findOne({
       where: { contractAddress: poolContract },
     });
     if (!pool) return;
-    const newVal = (parsed.args._newValue ?? 0n).toString();
+
     pool.assetUnderManagement = newVal;
     await this.pools.save(pool);
+
     await this.aumHistory.save({
       poolAddress: poolContract,
       aum: newVal,
-      source: 'oracle',
+      source: 'oracle' as const,
       recordedAt: new Date(),
     });
-    await this.saveTx(txId, 'aum_update', poolContract, 'confirmed');
+
+    await this.saveTx(txHash, 'aum_update', poolContract, 'confirmed', undefined, blockNumber);
   }
 
   private async handlePoolStatus(
     poolContract: string,
-    parsed: { args: { _newStatus: number } },
+    parsed: { args: Record<string, unknown> },
   ) {
     const pool = await this.pools.findOne({
       where: { contractAddress: poolContract },
     });
     if (!pool) return;
+
+    const statusMap: PoolEntity['status'][] = ['pending', 'active', 'closed'];
     const st = Number(parsed.args._newStatus);
-    const map: PoolEntity['status'][] = [
-      'pending',
-      'active',
-      'closed',
-    ];
-    pool.status = map[st] ?? pool.status;
+    pool.status = statusMap[st] ?? pool.status;
     await this.pools.save(pool);
   }
 
   private async handleV1PoolAdded(
     fundManagerContract: string,
-    parsed: {
-      args: { _v1PoolId: string; _allocation: number; wallet: string };
-    },
+    parsed: { args: Record<string, unknown> },
   ) {
     const pool = await this.pools.findOne({
       where: { fundManagerAddress: fundManagerContract },
     });
     if (!pool) return;
-    const w = parsed.args.wallet;
-    const walletAddr = evmAddressToContractId(
-      typeof w === 'string' && w.startsWith('0x') ? w : `0x${String(w).slice(-40)}`,
-    );
+
+    const walletAddr = String(parsed.args.wallet).toLowerCase();
     const row = this.borrowerPools.create({
       poolId: pool.id,
       fundManagerAddress: fundManagerContract,
@@ -423,18 +393,83 @@ export class IndexerService implements OnModuleInit {
     await this.borrowerPools.save(row);
   }
 
+  // ─── Helpers ───────────────────────────────────────────────
+
+  private async ensureFactoryRegistry() {
+    try {
+      const factoryAddr = this.contracts.factoryAddress();
+      const exists = await this.registry.findOne({
+        where: { address: factoryAddr.toLowerCase() },
+      });
+      if (!exists) {
+        await this.registry.save({
+          type: 'factory' as const,
+          address: factoryAddr.toLowerCase(),
+          implementationAddress: null,
+          deployedAt: new Date(),
+          version: 1,
+        });
+      }
+    } catch {
+      // Factory not configured
+    }
+  }
+
+  private async getState(contract: string, defaultBlock?: string): Promise<IndexerStateEntity> {
+    let s = await this.indexerState.findOne({
+      where: { contractAddress: contract },
+    });
+    if (!s) {
+      let initialBlock = defaultBlock;
+      if (!initialBlock) {
+        try {
+          const factory = this.contracts.factoryAddress().toLowerCase();
+          if (contract.toLowerCase() === factory) {
+            initialBlock = this.config.get<string>('indexer.startBlock') ?? '0';
+          } else {
+            initialBlock = '0';
+          }
+        } catch {
+          initialBlock = '0';
+        }
+      }
+
+      s = this.indexerState.create({
+        contractAddress: contract,
+        lastBlockNumber: initialBlock,
+      });
+      await this.indexerState.save(s);
+    }
+    return s;
+  }
+
   private async saveTx(
-    txId: string,
+    txHash: string,
     type: TransactionRecordEntity['type'],
     poolAddress: string,
     status: TransactionRecordEntity['status'],
     amount?: string,
+    blockNumber?: number,
   ) {
-    if (!txId || txId === 'unknown') return;
-    const exists = await this.txs.findOne({ where: { txHash: txId } });
-    if (exists) return;
+    if (!txHash) return;
+    const exists = await this.txs.findOne({ where: { txHash } });
+    if (exists) {
+      // Update an existing pending record to confirmed (or whatever status the indexer found)
+      if (exists.status !== status) {
+        exists.status = status;
+        exists.confirmedAt = new Date();
+        if (amount && (!exists.amount || exists.amount === '0')) {
+          exists.amount = amount;
+        }
+        if (blockNumber != null && !exists.blockNumber) {
+          exists.blockNumber = String(blockNumber);
+        }
+        await this.txs.save(exists);
+      }
+      return;
+    }
     await this.txs.save({
-      txHash: txId,
+      txHash,
       type,
       poolAddress,
       status,
@@ -443,7 +478,7 @@ export class IndexerService implements OnModuleInit {
       toAddress: null,
       tokenAddress: null,
       feeAmount: null,
-      consensusTimestamp: null,
+      blockNumber: blockNumber != null ? String(blockNumber) : null,
       confirmedAt: new Date(),
     });
   }

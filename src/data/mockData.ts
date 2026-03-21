@@ -6,35 +6,48 @@
 export const TOKENS = ['USDC'] as const;
 
 export interface Pool {
-  id: string;
+  id: string; // UUID
+  contractAddress: string; // 0x Address
+  fundManagerAddress: string; // 0x Address
   name: string;
   symbol: string;
-  borrower: string;
-  totalRequested: number;
+  borrowerAddress: string; // 0x Address
+  totalRequested: number; // Keep for some simple UI elements
   totalReceived: number;
   totalRepaid: number;
-  apy: number;
-  status: 'active' | 'paused' | 'closed';
+  poolSize: string; // Raw BigInt string from db
+  totalDeposited: string; // Raw BigInt string from db
+  assetUnderManagement: string; // Raw BigInt string from db
+  apyBasisPoints: number; // Raw integer from db
+  apy: number; // Float for UI (e.g., 6.5)
+  status: 'pending' | 'active' | 'paused' | 'closed';
   riskLevel: 'low' | 'medium' | 'high';
   acceptedTokens: string[];
   createdAt: string;
-  txHash: string;
+  txHash: string; // Creation tx
+  poolTokenAddress: string; // 0x Address
+  poolTokenName?: string;
+  lpTokenAddress?: string;
+  lpTokenName?: string;
   allocations: { wallet: string; percentage: number; fundsAssigned: number }[];
+  borrowerPools?: { v1PoolId: string; dedicatedWalletAddress: string }[];
 }
 
 export interface LenderPosition {
   poolId: string;
   poolName: string;
+  contractAddress?: string;
   deposited: number;
   currentValue: number;
   yield: number;
   pending: number;
   lpTokens: number;
+  poolTokenAddress?: string;
 }
 
 export interface TxHistory {
   id: string;
-  type: 'borrow' | 'repay' | 'deposit' | 'withdraw' | 'transfer';
+  type: 'borrow' | 'repay' | 'deposit' | 'withdraw' | 'transfer' | 'create_pool' | 'deploy_funds' | 'activate' | 'pause';
   amount: number;
   token: string;
   timestamp: string;
@@ -45,18 +58,25 @@ export interface TxHistory {
 export const mockPools: Pool[] = [
   {
     id: 'pool-1',
+    contractAddress: '0x0000000000000000000000000000000000000001',
+    fundManagerAddress: '0x0000000000000000000000000000000000000002',
     name: 'OneYield Growth Fund',
     symbol: 'HGF',
-    borrower: '0.0.4515312',
+    borrowerAddress: '0x1234567890abcdef1234567890abcdef12345678',
     totalRequested: 500000,
     totalReceived: 375000,
     totalRepaid: 125000,
+    poolSize: '500000000000',
+    totalDeposited: '375000000000',
+    assetUnderManagement: '375000000000',
+    apyBasisPoints: 850,
     apy: 8.5,
     status: 'active',
     riskLevel: 'low',
     acceptedTokens: ['USDC', 'USDT'],
     createdAt: '2024-01-15',
-    txHash: '0.0.12345-1705334400-000000000',
+    txHash: '0xabc123...',
+    poolTokenAddress: '0x0000000000000000000000000000000000000003',
     allocations: [
       { wallet: '0.0.5001234', percentage: 40, fundsAssigned: 150000 },
       { wallet: '0.0.5005678', percentage: 35, fundsAssigned: 131250 },
@@ -65,18 +85,25 @@ export const mockPools: Pool[] = [
   },
   {
     id: 'pool-2',
+    contractAddress: '0x0000000000000000000000000000000000000011',
+    fundManagerAddress: '0x0000000000000000000000000000000000000012',
     name: 'RWA Bridge Capital',
     symbol: 'RBC',
-    borrower: '0.0.4515312',
+    borrowerAddress: '0x1234567890abcdef1234567890abcdef12345678',
     totalRequested: 1000000,
     totalReceived: 820000,
     totalRepaid: 320000,
+    poolSize: '1000000000000',
+    totalDeposited: '820000000000',
+    assetUnderManagement: '820000000000',
+    apyBasisPoints: 1230,
     apy: 12.3,
     status: 'active',
     riskLevel: 'medium',
     acceptedTokens: ['USDC', 'HBAR'],
     createdAt: '2024-02-20',
-    txHash: '0.0.12345-1708416000-000000000',
+    txHash: '0xdef456...',
+    poolTokenAddress: '0x0000000000000000000000000000000000000003',
     allocations: [
       { wallet: '0.0.6001234', percentage: 50, fundsAssigned: 410000 },
       { wallet: '0.0.6005678', percentage: 50, fundsAssigned: 410000 },
@@ -84,36 +111,50 @@ export const mockPools: Pool[] = [
   },
   {
     id: 'pool-3',
+    contractAddress: '0x0000000000000000000000000000000000000021',
+    fundManagerAddress: '0x0000000000000000000000000000000000000022',
     name: 'Institutional Yield',
     symbol: 'IYF',
-    borrower: '0.0.7721000',
+    borrowerAddress: '0xabcdef1234567890abcdef1234567890abcdef12',
     totalRequested: 250000,
     totalReceived: 250000,
     totalRepaid: 250000,
+    poolSize: '250000000000',
+    totalDeposited: '250000000000',
+    assetUnderManagement: '250000000000',
+    apyBasisPoints: 620,
     apy: 6.2,
     status: 'closed',
     riskLevel: 'low',
     acceptedTokens: ['USDC'],
     createdAt: '2023-11-01',
-    txHash: '0.0.12345-1698796800-000000000',
+    txHash: '0xghi789...',
+    poolTokenAddress: '0x0000000000000000000000000000000000000003',
     allocations: [
       { wallet: '0.0.8001234', percentage: 100, fundsAssigned: 250000 },
     ],
   },
   {
     id: 'pool-4',
+    contractAddress: '0x0000000000000000000000000000000000000031',
+    fundManagerAddress: '0x0000000000000000000000000000000000000032',
     name: 'DeFi Infrastructure',
     symbol: 'DIF',
-    borrower: '0.0.9921000',
+    borrowerAddress: '0xfedcba0987654321fedcba0987654321fedcba09',
     totalRequested: 750000,
     totalReceived: 180000,
     totalRepaid: 0,
+    poolSize: '750000000000',
+    totalDeposited: '180000000000',
+    assetUnderManagement: '180000000000',
+    apyBasisPoints: 1510,
     apy: 15.1,
     status: 'active',
     riskLevel: 'high',
     acceptedTokens: ['USDC', 'USDT', 'DAI'],
     createdAt: '2024-03-10',
-    txHash: '0.0.12345-1710028800-000000000',
+    txHash: '0xjkl012...',
+    poolTokenAddress: '0x0000000000000000000000000000000000000003',
     allocations: [],
   },
 ];

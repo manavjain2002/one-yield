@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { ThemeToggle } from './ThemeToggle';
 import logo from '@/assets/oneyield-logo.png';
 
 const roleNavItems = {
@@ -82,6 +83,7 @@ export function Navbar() {
               <span className="text-xs font-medium text-foreground">{address?.slice(0, 8)}...</span>
             </div>
 
+            <ThemeToggle />
             <Button variant="ghost" size="icon" onClick={disconnect} className="text-muted-foreground hover:text-destructive">
               <LogOut className="h-4 w-4" />
             </Button>
@@ -117,7 +119,7 @@ export function Navbar() {
       </nav>
 
       {/* Low balance warning */}
-      {balance < 100 && (
+      {balance < 1 && (
         <div className="border-b border-warning/30 bg-warning/10 px-4 py-2 text-center text-xs font-medium text-warning">
           ⚠️ Low HBAR balance. You may not have enough to cover transaction fees.
         </div>

@@ -24,6 +24,17 @@ export default defineConfig(({ mode }) => ({
     },
   },
   optimizeDeps: {
-    include: ["buffer", "@hashgraph/hashconnect"],
+    include: [
+      "buffer",
+      "@hashgraph/hashconnect",
+      "@noble/hashes/sha3.js",
+      "@noble/curves/secp256k1.js",
+      "@noble/hashes/ripemd160.js",
+      "@noble/hashes/sha256.js",
+      "@noble/curves/abstract/utils.js",
+      "@noble/curves/p256.js",
+      "viem",
+      "wagmi"
+    ],
   },
 }));

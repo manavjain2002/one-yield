@@ -8,7 +8,10 @@ import {
   Post,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   IsArray,
   IsInt,
@@ -29,32 +32,38 @@ import { CurrentUser, JwtUser } from '../auth/current-user.decorator';
 import { PoolEntity } from '../entities/pool.entity';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 
+// ─── Request DTOs ────────────────────────────────────────────
+
 class CreatePoolBody {
-  @IsString()
-  @MinLength(1)
+  @IsString() @MinLength(1)
   name: string;
 
-  @IsString()
-  @MinLength(1)
+  @IsString() @MinLength(1)
   symbol: string;
 
-  /** Basis points; default 500 (5%). */
-  @IsOptional()
-  @IsInt()
-  @Min(0)
+  @IsOptional() 
+  @Type(() => Number)
+  @IsInt() @Min(0)
   apyBasisPoints?: number;
 
   @IsString()
   poolSize: string;
+
+  @IsOptional()
+  @IsString()
+  poolTokenAddress?: string;
+}
+
+class ConfirmDraftBody {
+  @IsString()
+  txHash: string;
 }
 
 class AllocationItem {
   @IsString()
   v1PoolId: string;
 
-  @IsInt()
-  @Min(1)
-  @Max(10000)
+  @IsInt() @Min(1) @Max(10000)
   allocationBps: number;
 
   @IsString()
@@ -69,26 +78,27 @@ class SetAllocationsBody {
 }
 
 class RepayBody {
-  @IsString()
-  poolId: string;
-
-  @IsString()
-  v1PoolId: string;
-
-  @IsString()
-  amount: string;
-
-  @IsString()
-  fee: string;
+  @IsString() poolId: string;
+  @IsString() v1PoolId: string;
+  @IsString() amount: string;
+  @IsString() fee: string;
 }
 
 class SendReserveBody {
-  @IsString()
-  amount: string;
-
-  @IsString()
-  uptoQueuePosition: string;
+  @IsString() amount: string;
+  @IsString() uptoQueuePosition: string;
 }
+
+class RecordActivityBody {
+  @IsString() txHash: string;
+  @IsString() type: string;
+  @IsString() amount: string;
+  @IsOptional() @IsString() poolId?: string;
+  @IsOptional() @IsString() tokenAddress?: string;
+  @IsOptional() @IsString() toAddress?: string;
+}
+
+// ─── Pool CRUD + Actions ─────────────────────────────────────
 
 @Controller('pools')
 export class PoolsController {
@@ -97,14 +107,12 @@ export class PoolsController {
     private readonly config: ConfigService,
   ) {}
 
-  private getRequiredHederaAddress(
+  private getRequiredAddress(
     field: 'poolManagerAddress' | 'oracleManagerAddress' | 'feeCollectorAddress',
-    displayName: string,
+    label: string,
   ): string {
-    const value = this.config.get<string>(`hedera.${field}`)?.trim();
-    if (!value) {
-      throw new BadRequestException(`${displayName} must be provided via ENV`);
-    }
+    const value = this.config.get<string>(`blockchain.${field}`)?.trim();
+    if (!value) throw new BadRequestException(`${label} must be provided via ENV`);
     return value;
   }
 
@@ -112,6 +120,19 @@ export class PoolsController {
   @SkipThrottle()
   list(@Query('status') status?: PoolEntity['status']) {
     return this.pools.listPools(status);
+  }
+
+  @Get('constants/tokens')
+  @SkipThrottle()
+  getTokens() {
+    return [
+      {
+        symbol: 'USDC',
+        name: 'USD Coin',
+        address: this.config.get<string>('blockchain.poolTokenAddress')?.trim(),
+      },
+      // You can add more supported tokens here as needed
+    ].filter(t => !!t.address);
   }
 
   @Get(':id')
@@ -126,62 +147,47 @@ export class PoolsController {
     return this.pools.getTransactions(id);
   }
 
+  @Get(':id/on-chain')
+  @SkipThrottle()
+  onChain(@Param('id') id: string) {
+    return this.pools.getOnChainState(id);
+  }
+
+  /**
+   * POST /pools — Creates a draft and returns encoded tx data.
+   * The borrower sends the createPool tx from their MetaMask wallet.
+   */
   @Post()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('borrower')
-  create(@CurrentUser() user: JwtUser, @Body() body: CreatePoolBody) {
-    const poolManagerAddress = this.getRequiredHederaAddress(
-      'poolManagerAddress',
-      'POOL_MANAGER_ADDRESS',
-    );
-    const oracleManagerAddress = this.getRequiredHederaAddress(
-      'oracleManagerAddress',
-      'ORACLE_MANAGER_ADDRESS',
-    );
-    const feeCollectorAddress = this.getRequiredHederaAddress(
-      'feeCollectorAddress',
-      'FEE_COLLECTOR_ADDRESS',
-    );
-    const poolTokenAddress = this.config
-      .get<string>('hedera.mockUsdcEvmAddress')
-      ?.trim();
-    if (!poolTokenAddress) {
-      throw new BadRequestException('MOCK_USDC_EVM_ADDRESS must be configured');
-    }
+  @UseInterceptors(FileInterceptor('file'))
+  create(
+    @CurrentUser() user: JwtUser, 
+    @Body() body: CreatePoolBody,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    const poolManagerAddress = this.getRequiredAddress('poolManagerAddress', 'POOL_MANAGER_ADDRESS');
+    const oracleManagerAddress = this.getRequiredAddress('oracleManagerAddress', 'ORACLE_MANAGER_ADDRESS');
+    const feeCollectorAddress = this.getRequiredAddress('feeCollectorAddress', 'FEE_COLLECTOR_ADDRESS');
+    const poolTokenAddress = this.config.get<string>('blockchain.poolTokenAddress')?.trim();
+    if (!poolTokenAddress) throw new BadRequestException('POOL_TOKEN_ADDRESS must be configured');
 
-    const data = {
+    // Trigger direct contract creation by the backend manager wallet
+    const identifier = user.walletAddress || user.username || user.userId;
+    return this.pools.createPoolDirect(identifier, {
       name: body.name,
       symbol: body.symbol,
       poolManagerAddress,
-      poolTokenAddress,
+      poolTokenAddress: body.poolTokenAddress || poolTokenAddress,
       oracleManagerAddress,
       feeCollectorAddress,
-      apyBasisPoints: body.apyBasisPoints !== undefined && body.apyBasisPoints !== null ? body.apyBasisPoints : 500,
-      poolSize: BigInt(body.poolSize),
-    }
-    console.log('data', data.name);
-    console.log('data', data.symbol);
-    console.log('data', data.poolManagerAddress);
-    console.log('data', data.poolTokenAddress);
-    console.log('data', data.oracleManagerAddress);
-    console.log('data', data.feeCollectorAddress);
-    console.log('data', data.apyBasisPoints);
-
-    return this.pools.createPoolRequest(user.accountId, {
-      name: body.name,
-      symbol: body.symbol,
-      poolManagerAddress,
-      poolTokenAddress,
-      oracleManagerAddress,
-      feeCollectorAddress,
-      apyBasisPoints:
-        body.apyBasisPoints !== undefined && body.apyBasisPoints !== null
-          ? body.apyBasisPoints
-          : 500,
-      poolSize: BigInt(body.poolSize),
-    });
+      apyBasisPoints: body.apyBasisPoints ?? 500,
+      poolSize: body.poolSize,
+    }, file);
   }
+
+
 
   @Patch(':id/allocations')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -192,7 +198,8 @@ export class PoolsController {
     @Param('id') id: string,
     @Body() body: SetAllocationsBody,
   ) {
-    return this.pools.setAllocations(id, body.allocations, user.accountId);
+    const identifier = user.walletAddress || user.username || user.userId;
+    return this.pools.setAllocations(id, body.allocations, identifier);
   }
 
   @Post(':id/activate')
@@ -232,13 +239,17 @@ export class PoolsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('manager')
   sendReserve(@Param('id') id: string, @Body() body: SendReserveBody) {
-    return this.pools.sendToReserve(
-      id,
-      BigInt(body.amount),
-      BigInt(body.uptoQueuePosition),
-    );
+    return this.pools.sendToReserve(id, BigInt(body.amount), BigInt(body.uptoQueuePosition));
+  }
+
+  @Post('record-activity')
+  @UseGuards(JwtAuthGuard)
+  recordActivity(@CurrentUser() user: JwtUser, @Body() body: RecordActivityBody) {
+    return this.pools.recordManualActivity(user.walletAddress, body);
   }
 }
+
+// ─── Borrower Routes ─────────────────────────────────────────
 
 @Controller('borrower')
 export class BorrowerRoutesController {
@@ -248,7 +259,24 @@ export class BorrowerRoutesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('borrower')
   myPools(@CurrentUser() user: JwtUser) {
-    return this.pools.borrowerPoolsFor(user.accountId);
+    return this.pools.borrowerPoolsFor(user.walletAddress, user.username);
+  }
+
+  @Get('wallets')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('borrower')
+  getWallets(@CurrentUser() user: JwtUser) {
+    return this.pools.getBorrowerWallets(user.username || user.walletAddress);
+  }
+
+  @Post('wallets')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('borrower')
+  setWallet(@CurrentUser() user: JwtUser, @Body() body: { tokenAddress: string; walletAddress: string }) {
+    if (!body.tokenAddress || !body.walletAddress) {
+      throw new BadRequestException('tokenAddress and walletAddress are required');
+    }
+    return this.pools.setBorrowerWallet(user.username || user.walletAddress, body.tokenAddress, body.walletAddress);
   }
 
   @Post('repay')
@@ -256,15 +284,29 @@ export class BorrowerRoutesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('borrower')
   repay(@CurrentUser() user: JwtUser, @Body() body: RepayBody) {
+    const identifier = user.walletAddress || user.username || user.userId;
     return this.pools.repay(
-      user.accountId,
+      identifier,
       body.poolId,
       body.v1PoolId,
       BigInt(body.amount),
       BigInt(body.fee),
     );
   }
+
+  @Get('transactions')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('borrower')
+  transactions(
+    @CurrentUser() user: JwtUser,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+  ) {
+    return this.pools.getTransactionsByAddress(user.walletAddress, page, limit);
+  }
 }
+
+// ─── Lender Routes ───────────────────────────────────────────
 
 @Controller('lender')
 export class LenderRoutesController {
@@ -274,20 +316,29 @@ export class LenderRoutesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('lender')
   positions(@CurrentUser() user: JwtUser) {
-    return this.pools.lenderPositions(user.accountId);
+    return this.pools.lenderPositions(user.walletAddress);
   }
 
-  @Get('positions/:poolId')
+  @Get('transactions')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('lender')
-  async position(
+  transactions(
     @CurrentUser() user: JwtUser,
-    @Param('poolId') poolId: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
   ) {
-    const list = await this.pools.lenderPositions(user.accountId);
-    return list.find((p) => p.poolId === poolId || p.pool?.contractAddress === poolId) ?? null;
+    return this.pools.getTransactionsByAddress(user.walletAddress, page, limit);
+  }
+
+  @Get('performance')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('lender')
+  performance() {
+    return this.pools.getLenderPerformance();
   }
 }
+
+// ─── Manager Routes ──────────────────────────────────────────
 
 @Controller('manager')
 export class ManagerRoutesController {
@@ -305,5 +356,15 @@ export class ManagerRoutesController {
   @Roles('manager')
   listManagedPools() {
     return this.poolsService.managerSummary();
+  }
+
+  @Get('transactions')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('manager')
+  transactions(
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+  ) {
+    return this.poolsService.getManagerTransactions(page, limit);
   }
 }

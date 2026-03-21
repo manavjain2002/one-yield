@@ -6,7 +6,7 @@ export class IndexerStateEntity {
   contractAddress: string;
 
   @Column({ type: 'bigint', default: '0' })
-  lastConsensusTimestamp: string;
+  lastBlockNumber: string;
 
   @UpdateDateColumn()
   updatedAt: Date;

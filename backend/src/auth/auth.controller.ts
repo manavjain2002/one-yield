@@ -5,15 +5,38 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser, JwtUser } from './current-user.decorator';
 
+class LoginDto {
+  @IsString()
+  @MinLength(3)
+  username: string;
+
+  @IsString()
+  @MinLength(6)
+  passwordPlain: string;
+}
+
+class RegisterDto {
+  @IsString()
+  @MinLength(3)
+  username: string;
+
+  @IsString()
+  @MinLength(6)
+  passwordPlain: string;
+
+  @IsIn(['borrower', 'lender', 'manager'])
+  role: 'borrower' | 'lender' | 'manager';
+}
+
 class ChallengeDto {
   @IsString()
   @MinLength(3)
-  accountId: string;
+  walletAddress: string;
 }
 
 class VerifyDto {
   @IsString()
-  accountId: string;
+  walletAddress: string;
 
   @IsString()
   challengeId: string;
@@ -34,13 +57,13 @@ export class AuthController {
 
   @Post('challenge')
   challenge(@Body() dto: ChallengeDto) {
-    return this.auth.createChallenge(dto.accountId);
+    return this.auth.createChallenge(dto.walletAddress);
   }
 
   @Post('verify')
   verify(@Body() dto: VerifyDto) {
     return this.auth.verifyAndLogin({
-      accountId: dto.accountId,
+      walletAddress: dto.walletAddress,
       challengeId: dto.challengeId,
       signatureHex: dto.signatureHex,
     });
@@ -49,6 +72,16 @@ export class AuthController {
   @Post('role')
   @UseGuards(JwtAuthGuard)
   setRole(@CurrentUser() user: JwtUser, @Body() dto: SetRoleDto) {
-    return this.auth.setRole(user.accountId, dto.role);
+    return this.auth.setRole(user.walletAddress, dto.role);
+  }
+
+  @Post('login')
+  login(@Body() dto: LoginDto) {
+    return this.auth.loginWithCredentials(dto.username, dto.passwordPlain);
+  }
+
+  @Post('register')
+  register(@Body() dto: RegisterDto) {
+    return this.auth.registerWithCredentials(dto.username, dto.passwordPlain, dto.role);
   }
 }

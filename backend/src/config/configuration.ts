@@ -13,17 +13,13 @@ export default () => ({
     host: process.env.REDIS_HOST ?? 'localhost',
     port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
   },
-  hedera: {
-    network: process.env.HEDERA_NETWORK ?? 'testnet',
-    mirrorNodeUrl:
-      process.env.HEDERA_MIRROR_NODE_URL ??
-      'https://testnet.mirrornode.hedera.com',
-    /** Hedera contract id `0.0.x` or EVM `0x…` (factory on Hedera EVM) */
-    factoryContractId: process.env.FACTORY_CONTRACT_ID ?? '0.0.8290502',
-    /** Default pool token when borrower omits `poolTokenAddress` (mock USDC on testnet) */
-    mockUsdcEvmAddress:
-      process.env.MOCK_USDC_EVM_ADDRESS ??
-      '0x1Cf407eCB2Cd690d4E6E3F465111E019032ACA74',
+  blockchain: {
+    network: process.env.BLOCKCHAIN_NETWORK ?? 'testnet',
+    rpcUrl: process.env.RPC_URL ?? 'https://testnet.hashio.io/api',
+    factoryAddress:
+      process.env.FACTORY_ADDRESS ?? '0xe9BE1b4E0dB6AF4123562CB01A5B44fD66606647',
+    poolTokenAddress:
+      process.env.POOL_TOKEN_ADDRESS ?? '0x1Cf407eCB2Cd690d4E6E3F465111E019032ACA74',
     poolManagerAddress: process.env.POOL_MANAGER_ADDRESS,
     oracleManagerAddress: process.env.ORACLE_MANAGER_ADDRESS,
     feeCollectorAddress: process.env.FEE_COLLECTOR_ADDRESS,
@@ -44,5 +40,6 @@ export default () => ({
       process.env.INDEXER_POLL_INTERVAL_SEC ?? '15',
       10,
     ),
+    startBlock: process.env.INDEXER_START_BLOCK ?? '32993354',
   },
 });
