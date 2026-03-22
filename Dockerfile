@@ -2,6 +2,12 @@
 FROM node:20-alpine AS builder
 # Bump when Railway keeps serving an old nginx image from cache (see deploy logs for nginx vs [static]).
 ARG RAILWAY_DOCKERFILE_REVISION=2
+# Vite bakes these at build time — Railway passes Variables as build args. Use literal URLs in
+# Railway UI (e.g. https://one-yield-backend-production.up.railway.app); ${{...}} refs may not resolve.
+ARG VITE_API_URL
+ARG VITE_WS_URL
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_WS_URL=$VITE_WS_URL
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
