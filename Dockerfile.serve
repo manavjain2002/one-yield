@@ -1,5 +1,4 @@
-# Alternative: use `serve` instead of nginx. Natively respects $PORT and binds to 0.0.0.0.
-# To use: set railway.json frontend build.dockerfilePath to "Dockerfile.serve"
+# Production static hosting for Railway: Node listens on 0.0.0.0:$PORT (see serve-static.mjs).
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
@@ -9,9 +8,9 @@ RUN npm run build
 
 FROM node:20-alpine
 WORKDIR /app
-RUN npm install -g serve
 COPY --from=builder /app/dist ./dist
-ENV PORT=8080
+COPY serve-static.mjs ./
+ENV NODE_ENV=production
+# Railway injects PORT at runtime — do not pin PORT in Railway UI for the frontend service.
 EXPOSE 8080
-# serve binds to 0.0.0.0 by default; -s enables SPA fallback for client-side routing
-CMD ["sh", "-c", "serve -s dist -l ${PORT}"]
+CMD ["node", "serve-static.mjs"]
