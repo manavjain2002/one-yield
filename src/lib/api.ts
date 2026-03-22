@@ -1,23 +1,27 @@
 import axios, { AxiosError } from 'axios';
-import { toast } from 'sonner';
+import {
+  loadRuntimeApiEnv,
+  resolvedApiBase,
+  isApiEnvConfigured,
+} from './api-env';
 
-/** Railway / env often provide hostname without scheme; axios needs an absolute URL. */
-function normalizeApiBase(url: string): string {
-  const t = url.trim();
-  if (!t) return '';
-  if (/^https?:\/\//i.test(t)) return t.replace(/\/+$/, '');
-  const host = t.replace(/^\/+/, '').replace(/\/+$/, '');
-  if (/^(localhost\b|127\.0\.0\.1)(?::|$)/i.test(host)) return `http://${host}`;
-  return `https://${host}`;
-}
-
-const baseURL = normalizeApiBase(import.meta.env.VITE_API_URL ?? '');
-console.log('baseURL', baseURL);
+const baseURL = resolvedApiBase();
 
 export const api = axios.create({
   baseURL: baseURL || undefined,
   headers: { 'Content-Type': 'application/json' },
 });
+
+/** Load `/api-config.json` then apply axios baseURL (Railway runtime env fallback). */
+export async function initApiFromRuntime(): Promise<void> {
+  await loadRuntimeApiEnv();
+  const b = resolvedApiBase();
+  api.defaults.baseURL = b || undefined;
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.log('[api] baseURL', b || '(relative — same origin)');
+  }
+}
 
 // Dynamic Auth & Audit Logging Interceptors
 api.interceptors.request.use((config) => {
@@ -91,7 +95,7 @@ export function loadStoredToken() {
 }
 
 export function isApiConfigured(): boolean {
-  return Boolean(import.meta.env.VITE_API_URL);
+  return isApiEnvConfigured();
 }
 
 export function getErrorMessage(err: unknown): string {

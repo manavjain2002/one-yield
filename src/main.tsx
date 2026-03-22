@@ -5,8 +5,16 @@ if (typeof g.Buffer === "undefined") {
   g.Buffer = Buffer;
 }
 
-import { createRoot } from "react-dom/client";
-import App from "./App.tsx";
 import "./index.css";
+import { initApiFromRuntime } from "./lib/api";
 
-createRoot(document.getElementById("root")!).render(<App />);
+async function boot() {
+  await initApiFromRuntime();
+  const [{ createRoot }, { default: App }] = await Promise.all([
+    import("react-dom/client"),
+    import("./App.tsx"),
+  ]);
+  createRoot(document.getElementById("root")!).render(<App />);
+}
+
+void boot();

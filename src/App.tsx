@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { WalletProvider, useWallet } from "@/contexts/WalletContext";
 import { isApiConfigured } from "@/lib/api";
+import { resolvedWsBase } from "@/lib/api-env";
 import { useEventsSocket } from "@/hooks/useEventsSocket";
 import LandingPage from "./pages/LandingPage";
 import BorrowerDashboard from "./pages/borrower/BorrowerDashboard";
@@ -86,7 +87,7 @@ function ProtectedRoute({ children, allowedRole }: { children: React.ReactNode; 
 
 function EventsBridge() {
   const { accessToken } = useWallet();
-  useEventsSocket(Boolean(accessToken && import.meta.env.VITE_WS_URL));
+  useEventsSocket(Boolean(accessToken && resolvedWsBase()));
   return null;
 }
 

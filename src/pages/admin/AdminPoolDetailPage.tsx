@@ -17,6 +17,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { api, loadStoredToken } from '@/lib/api';
+import { resolvedApiBase } from '@/lib/api-env';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { getLendingPoolRead } from '@/lib/contracts';
@@ -178,7 +179,7 @@ export default function AdminPoolDetailPage() {
             <div className="aspect-[3/4] glass-card rounded-2xl border border-border/50 bg-secondary/5 overflow-hidden relative shadow-inner">
               {draft?.hasDocument ? (
                 <iframe
-                  src={`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/admin/pool-drafts/${draft.id}/file?token=${loadStoredToken() || ''}#toolbar=0`}
+                  src={`${resolvedApiBase() || 'http://localhost:3001/api'}/admin/pool-drafts/${draft.id}/file?token=${loadStoredToken() || ''}#toolbar=0`}
                   className="w-full h-full absolute inset-0 border-none bg-white/50"
                   title="Document"
                 />

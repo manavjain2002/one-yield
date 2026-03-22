@@ -1,0 +1,5 @@
+# If this service’s Root Directory is set to `frontend`, Railway reads this file.
+# Use the repo-root Dockerfile and full-repo context so the Vite app (at repo root) still builds.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "/Dockerfile"

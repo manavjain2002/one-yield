@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { AddressLink } from '@/components/AddressLink';
 import { Loader2, FileText, Download, CheckCircle2, ArrowRight } from 'lucide-react';
 import { api, loadStoredToken } from '@/lib/api';
+import { resolvedApiBase } from '@/lib/api-env';
 
 function DraftDetailView({ id }: { id: string }) {
   const { data: draft, isLoading } = useAdminPoolDraft(id);
@@ -97,7 +98,7 @@ function DraftDetailView({ id }: { id: string }) {
         <div className="flex-1 glass-card rounded-2xl border border-border/50 bg-secondary/5 overflow-hidden relative min-h-[400px]">
           {draft.hasDocument ? (
             <iframe
-              src={`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/admin/pool-drafts/${draft.id}/file?token=${loadStoredToken() || ''}#toolbar=0`}
+              src={`${resolvedApiBase() || 'http://localhost:3001/api'}/admin/pool-drafts/${draft.id}/file?token=${loadStoredToken() || ''}#toolbar=0`}
               className="w-full h-full absolute inset-0 border-none bg-white/50"
               title="Document"
             />

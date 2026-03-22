@@ -4,6 +4,7 @@ import { useAdminPoolDraft } from '@/hooks/useAdminPoolDrafts';
 import { useAdminPoolActions } from '@/hooks/useAdminPoolActions';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
+import { resolvedApiBase } from '@/lib/api-env';
 import { Loader2 } from 'lucide-react';
 import { AddressLink } from '@/components/AddressLink';
 
@@ -138,7 +139,7 @@ export default function AdminDraftDetailPage() {
             <div className="glass-card rounded-2xl border border-border/50 overflow-hidden bg-secondary/5 min-h-[600px] flex flex-col items-center justify-center relative">
               {draft.hasDocument ? (
                 <iframe
-                  src={`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/admin/pool-drafts/${draftId}/file#toolbar=0`}
+                  src={`${resolvedApiBase() || 'http://localhost:3001/api'}/admin/pool-drafts/${draftId}/file#toolbar=0`}
                   className="w-full h-full absolute inset-0 border-none"
                   title="Document Preview"
                 />

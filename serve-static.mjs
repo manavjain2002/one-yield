@@ -60,6 +60,23 @@ const server = http.createServer((req, res) => {
   }
 
   let urlPath = req.url.split('?')[0];
+
+  if (urlPath === '/api-config.json') {
+    const apiUrl = (process.env.VITE_API_URL || '').trim();
+    const wsUrl = (process.env.VITE_WS_URL || '').trim();
+    const body = JSON.stringify({ apiUrl, wsUrl });
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+    if (req.method === 'HEAD') {
+      res.end();
+      return;
+    }
+    res.end(body);
+    return;
+  }
+
   if (urlPath === '/favicon.ico') {
     const icoPath = path.join(dist, 'favicon.ico');
     const svgPath = path.join(dist, 'favicon.svg');
