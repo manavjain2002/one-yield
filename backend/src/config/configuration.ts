@@ -34,6 +34,7 @@ export default () => {
       name: process.env.DATABASE_NAME ?? 'oneyield',
     },
     redis: {
+      url: redisUrl,
       host: redisHost,
       port: redisPort,
       username: redisUsername,

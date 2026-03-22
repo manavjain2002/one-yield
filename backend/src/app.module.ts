@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
+import Redis from 'ioredis';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import configuration from './config/configuration';
@@ -68,14 +69,37 @@ import { BorrowerWalletEntity } from './entities/borrower-wallet.entity';
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        connection: {
-          host: config.get<string>('redis.host'),
-          port: config.get<number>('redis.port'),
-          username: config.get<string>('redis.username'),
-          password: config.get<string>('redis.password'),
-        },
-      }),
+      useFactory: (config: ConfigService) => {
+        const url = config.get<string>('redis.url');
+        const host = config.get<string>('redis.host');
+        const port = config.get<number>('redis.port');
+        const username = config.get<string>('redis.username');
+        const password = config.get<string>('redis.password');
+
+        const redisOptions = {
+          maxRetriesPerRequest: null,
+          enableReadyCheck: false,
+          retryStrategy: (times: number) => {
+            console.log(`Retrying Redis connection (attempt: ${times})...`);
+            return Math.min(times * 1000, 10000); // Wait up to 10s between retries
+          },
+        };
+
+        let connection;
+        if (url) {
+          connection = new Redis(url, redisOptions);
+        } else {
+          connection = new Redis({
+            host,
+            port,
+            username,
+            password,
+            ...redisOptions,
+          });
+        }
+
+        return { connection };
+      },
     }),
     ScheduleModule.forRoot(),
     WebsocketModule,
