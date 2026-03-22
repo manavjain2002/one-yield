@@ -24,7 +24,17 @@ export default () => {
   return {
     port: parseInt(process.env.PORT ?? '3001', 10),
     nodeEnv: process.env.NODE_ENV ?? 'development',
-    corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:8080',
+    corsOrigin: (() => {
+      const raw = process.env.CORS_ORIGIN ?? 'http://localhost:8080';
+      if (raw === '*' || raw === 'true') return true;
+      const parts = raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (parts.length === 0) return true;
+      if (parts.length === 1) return parts[0];
+      return parts;
+    })(),
     database: {
       url: process.env.DATABASE_URL,
       host: process.env.DATABASE_HOST ?? 'localhost',

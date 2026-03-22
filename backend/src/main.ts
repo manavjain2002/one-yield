@@ -13,11 +13,12 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
+  const corsOrigin = config.get<string | string[]>('corsOrigin');
   app.enableCors({
-    origin: config.get<string>('corsOrigin') ?? true,
+    origin: corsOrigin ?? true,
     credentials: true,
   });
   const port = config.get<number>('port') ?? 3001;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 }
 void bootstrap();

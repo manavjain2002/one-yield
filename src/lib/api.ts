@@ -1,7 +1,17 @@
 import axios, { AxiosError } from 'axios';
 import { toast } from 'sonner';
 
-const baseURL = import.meta.env.VITE_API_URL ?? '';
+/** Railway / env often provide hostname without scheme; axios needs an absolute URL. */
+function normalizeApiBase(url: string): string {
+  const t = url.trim();
+  if (!t) return '';
+  if (/^https?:\/\//i.test(t)) return t.replace(/\/+$/, '');
+  const host = t.replace(/^\/+/, '').replace(/\/+$/, '');
+  if (/^(localhost\b|127\.0\.0\.1)(?::|$)/i.test(host)) return `http://${host}`;
+  return `https://${host}`;
+}
+
+const baseURL = normalizeApiBase(import.meta.env.VITE_API_URL ?? '');
 
 export const api = axios.create({
   baseURL: baseURL || undefined,
