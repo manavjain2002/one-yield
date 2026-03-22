@@ -18,9 +18,12 @@ import {
 } from 'lucide-react';
 import { useAccount } from 'wagmi';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
-import { api } from '@/lib/api';
+import { api, getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { usePoolContractPaused } from '@/hooks/usePoolContractPaused';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import axios from 'axios';
 
 export default function AdminPoolDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -31,18 +34,48 @@ export default function AdminPoolDetailPage() {
   
   const { data: draft, isLoading: draftLoading } = useAdminPoolDraft(pool?.draftId || '');
   const actions = useAdminPoolActions();
+  const [downloading, setDownloading] = useState(false);
 
   const { data: isPaused, isLoading: pausedLoading } = usePoolContractPaused(pool?.contractAddress);
 
   const downloadFile = async () => {
-    if (!draft) return;
-    const res = await api.get(`/admin/pool-drafts/${draft.id}/file`, { responseType: 'blob' });
-    const url = URL.createObjectURL(res.data);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = draft.documentOriginalName || 'pool-draft-file';
-    a.click();
-    URL.revokeObjectURL(url);
+    if (!draft?.hasDocument) return;
+    setDownloading(true);
+    try {
+      const res = await api.get(`/admin/pool-drafts/${draft.id}/file`, { responseType: 'blob' });
+      if (res.status < 200 || res.status >= 300) {
+        const text = await (res.data as Blob).text();
+        let msg = 'Download failed.';
+        try {
+          const json = JSON.parse(text);
+          msg = json.message || json.error || msg;
+        } catch {
+          msg = text || msg;
+        }
+        toast.error(msg);
+        return;
+      }
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = draft.documentOriginalName || 'pool-draft-file';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      if (axios.isAxiosError(e) && e.response?.data instanceof Blob) {
+        try {
+          const text = await (e.response.data as Blob).text();
+          const json = JSON.parse(text);
+          toast.error(json.message || json.error || text);
+        } catch {
+          toast.error(getErrorMessage(e));
+        }
+      } else {
+        toast.error(getErrorMessage(e));
+      }
+    } finally {
+      setDownloading(false);
+    }
   };
 
   if (poolsLoading || (pool?.draftId && draftLoading)) {
@@ -86,6 +119,12 @@ export default function AdminPoolDetailPage() {
           </div>
 
           <div className="flex flex-col items-end gap-2 max-w-sm">
+            {draft?.hasDocument && (
+              <Button type="button" size="sm" variant="secondary" className="gap-2 shrink-0" disabled={downloading} onClick={() => void downloadFile()}>
+                {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                {downloading ? 'Downloading…' : 'Download loan tape'}
+              </Button>
+            )}
             {!isConnected && (
               <p className="text-[11px] text-muted-foreground text-right leading-snug">
                 Connect a browser wallet to sign factory transactions (pause, unpause, close), same as when deploying from drafts.
@@ -211,9 +250,9 @@ export default function AdminPoolDetailPage() {
                 </div>
               </div>
               {draft?.hasDocument ? (
-                <Button type="button" size="sm" variant="secondary" className="shrink-0 gap-2" onClick={() => void downloadFile()}>
-                  <Download className="h-4 w-4" />
-                  Download
+                <Button type="button" size="sm" variant="secondary" className="shrink-0 gap-2" disabled={downloading} onClick={() => void downloadFile()}>
+                  {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  {downloading ? 'Downloading…' : 'Download'}
                 </Button>
               ) : null}
             </div>

@@ -6,23 +6,55 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { AddressLink } from '@/components/AddressLink';
 import { Loader2, FileText, Download, CheckCircle2, ArrowRight } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, getErrorMessage } from '@/lib/api';
 import { AdminDeployPoolButton } from '@/components/AdminDeployPoolButton';
 import { AdminDraftBorrowerCard } from '@/components/AdminDraftBorrowerCard';
+import { toast } from 'sonner';
+import axios from 'axios';
 
 function DraftDetailView({ id }: { id: string }) {
   const { data: draft, isLoading } = useAdminPoolDraft(id);
   const actions = useAdminPoolActions();
+  const [downloading, setDownloading] = useState(false);
 
   const downloadFile = async () => {
-    if (!draft) return;
-    const res = await api.get(`/admin/pool-drafts/${draft.id}/file`, { responseType: 'blob' });
-    const url = URL.createObjectURL(res.data);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = draft.documentOriginalName || 'pool-draft-file';
-    a.click();
-    URL.revokeObjectURL(url);
+    if (!draft?.hasDocument) return;
+    setDownloading(true);
+    try {
+      const res = await api.get(`/admin/pool-drafts/${draft.id}/file`, { responseType: 'blob' });
+      if (res.status < 200 || res.status >= 300) {
+        const text = await (res.data as Blob).text();
+        let msg = 'Download failed.';
+        try {
+          const json = JSON.parse(text);
+          msg = json.message || json.error || msg;
+        } catch {
+          msg = text || msg;
+        }
+        toast.error(msg);
+        return;
+      }
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = draft.documentOriginalName || 'pool-draft-file';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      if (axios.isAxiosError(e) && e.response?.data instanceof Blob) {
+        try {
+          const text = await (e.response.data as Blob).text();
+          const json = JSON.parse(text);
+          toast.error(json.message || json.error || text);
+        } catch {
+          toast.error(getErrorMessage(e));
+        }
+      } else {
+        toast.error(getErrorMessage(e));
+      }
+    } finally {
+      setDownloading(false);
+    }
   };
 
   if (isLoading) {
@@ -67,6 +99,28 @@ function DraftDetailView({ id }: { id: string }) {
 
         </div>
 
+        <div className="glass-card rounded-xl border border-border/50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <FileText className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">Loan tape</p>
+              {draft.hasDocument ? (
+                <p className="text-xs text-muted-foreground truncate" title={draft.documentOriginalName ?? ''}>
+                  {draft.documentOriginalName ?? 'Attached file'}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">No file attached to this draft.</p>
+              )}
+            </div>
+          </div>
+          {draft.hasDocument ? (
+            <Button type="button" size="sm" className="shrink-0 gap-2" disabled={downloading} onClick={() => void downloadFile()}>
+              {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {downloading ? 'Downloading…' : 'Download'}
+            </Button>
+          ) : null}
+        </div>
+
         <div className="p-5 rounded-2xl border border-primary/30 bg-primary/5 space-y-4 shadow-sm">
           <div>
             <h4 className="text-sm font-bold text-primary flex items-center gap-2">
@@ -84,28 +138,6 @@ function DraftDetailView({ id }: { id: string }) {
             onDeploy={(d) => actions.createPoolFromDraft.mutate(d)}
             labelConnected="Create Pool On-Chain"
           />
-        </div>
-
-        <div className="glass-card rounded-xl border border-border/50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-start gap-3 min-w-0">
-            <FileText className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold">Loan tape</p>
-              {draft.hasDocument ? (
-                <p className="text-xs text-muted-foreground truncate" title={draft.documentOriginalName ?? ''}>
-                  {draft.documentOriginalName ?? 'Attached file'}
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground">No file attached to this draft.</p>
-              )}
-            </div>
-          </div>
-          {draft.hasDocument ? (
-            <Button type="button" size="sm" className="shrink-0 gap-2" onClick={() => void downloadFile()}>
-              <Download className="h-4 w-4" />
-              Download
-            </Button>
-          ) : null}
         </div>
       </div>
     </div>

@@ -55,6 +55,8 @@ export default function BorrowerDashboard() {
   });
 
   const handleCreate = async () => {
+    if (!name.trim()) { toast.error('Pool Name is required.'); return; }
+    if (!symbol.trim()) { toast.error('Symbol is required.'); return; }
     const usd = parseInt(borrowUsd, 10);
     if (!usd || usd <= 0) { toast.error('Enter a valid integer amount'); return; }
     const apyNum = parseFloat(apyInput);
@@ -301,23 +303,23 @@ export default function BorrowerDashboard() {
           <DialogHeader><DialogTitle className="text-xl font-bold">Create New Pool</DialogTitle></DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Pool Name</Label>
+              <Label>Pool Name <span className="text-destructive">*</span></Label>
               <Input placeholder="e.g. ALPHA FUND" value={name} onChange={e => setName(e.target.value.toUpperCase())} className="bg-secondary/50 border-border" />
             </div>
             <div className="space-y-2">
-              <Label>Symbol</Label>
+              <Label>Symbol <span className="text-destructive">*</span></Label>
               <Input placeholder="e.g. ALPHA" value={symbol} onChange={e => setSymbol(e.target.value.toUpperCase())} className="bg-secondary/50 border-border" />
             </div>
             <div className="space-y-2">
-              <Label>Accepted Token</Label>
+              <Label>Accepted Token <span className="text-destructive">*</span></Label>
               <SearchableSelect options={[{ value: '', label: 'Default USDC' }, ...tokens.map(t => ({ value: t.address, label: `${t.name} (${t.symbol})`, description: `${t.address.slice(0, 8)}...${t.address.slice(-6)}` }))]} value={tokenAddress} onChange={setTokenAddress} placeholder="Select Token (Default USDC)" />
             </div>
             <div className="space-y-2">
-              <Label>Borrow Amount</Label>
+              <Label>Borrow Amount <span className="text-destructive">*</span></Label>
               <Input type="number" inputMode="numeric" step="1" value={borrowUsd} onChange={e => { const v = e.target.value; if (!v || /^\d+$/.test(v)) setBorrowUsd(v); }} placeholder="500000" className="bg-secondary/50 border-border" />
             </div>
             <div className="space-y-2">
-              <Label>Projected APY (%)</Label>
+              <Label>Projected APY (%) <span className="text-destructive">*</span></Label>
               <Input type="text" inputMode="decimal" value={apyInput} onChange={e => setApyInput(e.target.value)} placeholder="e.g., 8.5" className="bg-secondary/50 border-border" />
             </div>
             <div className="space-y-2">

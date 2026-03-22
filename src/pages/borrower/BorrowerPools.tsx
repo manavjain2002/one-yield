@@ -68,6 +68,14 @@ export default function BorrowerPools() {
       return;
     }
     try {
+      if (!name.trim()) {
+        toast.error('Pool Name is required.');
+        return;
+      }
+      if (!symbol.trim()) {
+        toast.error('Symbol is required.');
+        return;
+      }
       const poolSize = usdToMockUsdcAtomic(borrowUsd);
       const apyNum = parseFloat(apy);
       if (!Number.isFinite(apyNum) || apyNum <= 0 || apyNum > 100) {
@@ -236,7 +244,7 @@ export default function BorrowerPools() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Pool Name</Label>
+              <Label>Pool Name <span className="text-destructive">*</span></Label>
               <Input
                 placeholder="e.g. ALPHA FUND"
                 value={name}
@@ -245,7 +253,7 @@ export default function BorrowerPools() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Symbol</Label>
+              <Label>Symbol <span className="text-destructive">*</span></Label>
               <Input
                 placeholder="e.g. ALPHA"
                 value={symbol}
@@ -254,7 +262,7 @@ export default function BorrowerPools() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Accepted token</Label>
+              <Label>Accepted token <span className="text-destructive">*</span></Label>
               <SearchableSelect
                 options={[
                   { value: '', label: 'Default USDC' },
@@ -266,7 +274,7 @@ export default function BorrowerPools() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Borrow Amount</Label>
+              <Label>Borrow Amount <span className="text-destructive">*</span></Label>
               <Input
                 type="number"
                 inputMode="numeric"
@@ -278,7 +286,7 @@ export default function BorrowerPools() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Projected APY (%)</Label>
+              <Label>Projected APY (%) <span className="text-destructive">*</span></Label>
               <Input
                 type="text"
                 inputMode="decimal"
