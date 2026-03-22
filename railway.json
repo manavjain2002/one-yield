@@ -1,0 +1,30 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "services": {
+    "frontend": {
+      "name": "one-yield-frontend",
+      "root": "/",
+      "build": {
+        "builder": "DOCKER",
+        "dockerfilePath": "Dockerfile"
+      },
+      "deploy": {
+        "healthcheckPath": "/",
+        "restartPolicyType": "ON_FAILURE"
+      }
+    },
+    "backend": {
+      "name": "one-yield-backend",
+      "root": "/backend",
+      "build": {
+        "builder": "DOCKER",
+        "dockerfilePath": "Dockerfile"
+      },
+      "deploy": {
+        "healthcheckPath": "/api",
+        "restartPolicyType": "ON_FAILURE"
+      }
+    }
+
+  }
+}
