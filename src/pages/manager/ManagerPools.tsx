@@ -22,11 +22,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 export default function ManagerPools() {
   const { data: summary } = useManagerSummary();
   const pools = summary?.poolsUi ?? [];
-  console.log('pools', pools);
   const [searchParams] = useSearchParams();
   const initialPoolId = searchParams.get('poolId');
   const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
-  console.log('selectedPool', selectedPool);
   const actions = useManagerActions();
   const { startTransaction, endTransaction } = useTransaction();
 
@@ -126,7 +124,6 @@ export default function ManagerPools() {
 
   const isPoolPending = selectedPool.status === 'pending';
   const isPoolClosed = selectedPool.status === 'closed';
-  const isPoolActive = selectedPool.status === 'active' && !isPaused;
 
   return (
     <DashboardLayout>
@@ -190,7 +187,7 @@ export default function ManagerPools() {
             <div className="bg-primary/20 text-primary text-[10px] px-2 py-0.5 rounded-full font-bold">ACTIVE ACTIONS</div>
           </div>
 
-          <div className="grid gap-3">
+          <div className="grid gap-6 lg:grid-cols-2">
             <div className="p-4 rounded-xl border border-primary/30 bg-primary/5 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-bold uppercase tracking-widest text-primary">Deploy Funds</p>
@@ -214,7 +211,7 @@ export default function ManagerPools() {
               </Tooltip>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-4">
               <div className="p-4 rounded-xl border border-border bg-secondary/20 space-y-3">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Transfer to Reserve (Sweep) — {poolTokenName}</p>
                 <div className="flex gap-2">
@@ -227,6 +224,7 @@ export default function ManagerPools() {
                       className="h-9 text-sm bg-secondary/30 pr-14"
                     />
                     <button
+                      type="button"
                       onClick={() => setSweepAmount(String(poolFundsNum))}
                       className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-primary font-bold hover:underline"
                     >
@@ -264,6 +262,7 @@ export default function ManagerPools() {
                       className="h-9 text-sm bg-secondary/30 pr-14"
                     />
                     <button
+                      type="button"
                       onClick={() => setRefillAmount(String(aumNum))}
                       className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-primary font-bold hover:underline"
                     >
@@ -292,58 +291,23 @@ export default function ManagerPools() {
             </div>
           </div>
 
-          <div className="pt-2 border-t border-border/50">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-bold">Safety Controls</span>
-              <div className="bg-destructive/10 text-destructive text-[8px] px-2 py-0.5 rounded-full font-bold">RISK MGMT</div>
+          {isPoolPending && (
+            <div className="pt-2 border-t border-border/50">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm font-bold">Activation</span>
+              </div>
+              <Button
+                className="w-full gradient-primary shadow-lg glow-primary font-bold h-11 rounded-xl"
+                disabled={actions.activatePool.isPending}
+                onClick={() => {
+                  startTransaction('Activating pool...');
+                  actions.activatePool.mutateAsync(selectedPool).finally(endTransaction);
+                }}
+              >
+                {actions.activatePool.isPending ? 'Activating...' : 'Activate & Initialize Pool'}
+              </Button>
             </div>
-            <div className="flex gap-2">
-              {isPoolPending ? (
-                <Button
-                  className="w-full gradient-primary shadow-lg glow-primary font-bold h-11 rounded-xl"
-                  disabled={actions.activatePool.isPending}
-                  onClick={() => {
-                    startTransaction('Activating pool...');
-                    actions.activatePool.mutateAsync(selectedPool).finally(endTransaction);
-                  }}
-                >
-                  {actions.activatePool.isPending ? 'Activating...' : 'Activate & Initialize Pool'}
-                </Button>
-              ) : isPoolClosed ? (
-                <Button variant="outline" className="w-full rounded-xl font-bold h-11" disabled>Pool Closed</Button>
-              ) : (
-                <>
-                  {isPaused ? (
-                    <Button
-                      variant="outline"
-                      className="flex-1 rounded-xl text-xs border-success text-success hover:bg-success/10 font-bold h-11"
-                      disabled={actions.unpausePool.isPending}
-                      onClick={() => { startTransaction('Unpausing...'); actions.unpausePool.mutateAsync(selectedPool, { onSuccess: () => refetchPaused() }).finally(endTransaction); }}
-                    >
-                      Unpause Pool
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="destructive"
-                      className="flex-1 rounded-xl text-xs font-bold h-11"
-                      disabled={actions.pausePool.isPending}
-                      onClick={() => { startTransaction('Pausing...'); actions.pausePool.mutateAsync(selectedPool, { onSuccess: () => refetchPaused() }).finally(endTransaction); }}
-                    >
-                      Pause Pool
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    className="flex-1 rounded-xl text-xs border-destructive/30 text-destructive hover:bg-destructive/10 font-bold h-11"
-                    disabled={actions.closePool.isPending}
-                    onClick={() => { if (window.confirm('Are you sure you want to CLOSE this pool? This is irreversible.')) { startTransaction('Closing...'); actions.closePool.mutateAsync(selectedPool).finally(endTransaction); } }}
-                  >
-                    Close Pool
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
+          )}
         </div>
 
         <Tabs defaultValue="deposits" className="space-y-4">

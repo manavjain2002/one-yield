@@ -22,7 +22,9 @@ export function ChildPoolsManager({ pool }: { pool: Pool }) {
   const { data: borrowerWallets = [] } = useQuery({
     queryKey: ['pool-borrower-wallets', pool.id],
     queryFn: async () => {
+      console.log('Fetching borrower wallets for pool:', pool.id);
       const { data } = await api.get<BorrowerWallet[]>(`/pools/${pool.id}/borrower-wallets`);
+      console.log('Borrower wallets:', data);
       return data;
     },
     enabled: !!pool.id,
@@ -31,7 +33,7 @@ export function ChildPoolsManager({ pool }: { pool: Pool }) {
   // --- Read on-chain pools via poolCount() + v1Pools(i) ---
   const { data: onChainPools = [], refetch: refetchOnChain } = useQuery({
     queryKey: ['on-chain-pools', pool.fundManagerAddress, pool.id],
-  
+
     queryFn: async () => {
       const fm = getAssetManagerRead(pool.fundManagerAddress);
       const count = await fm.totalV1Pools();
@@ -39,7 +41,7 @@ export function ChildPoolsManager({ pool }: { pool: Pool }) {
       for (let i = 0; i < Number(count); i++) {
         const result = await fm.v1Pools(i);
         const wallet = await fm.dedicatedWallet(result.v1PoolId);
-  
+
         pools.push({
           index: i,
           v1PoolId: result.v1PoolId || result[0],
@@ -47,12 +49,12 @@ export function ChildPoolsManager({ pool }: { pool: Pool }) {
           wallet,
         });
       }
-  
+
       return pools;
     },
-  
+
     enabled: !!pool.fundManagerAddress,
-  
+
     // 🔥 important settings
     staleTime: 5000,              // avoid spamming RPC
     refetchOnWindowFocus: false,  // optional
@@ -129,24 +131,24 @@ export function ChildPoolsManager({ pool }: { pool: Pool }) {
     }
   };
 
-  const handleRemove = async (index: number) => {
+  const handleRemove = async (index: number, v1PoolId: string) => {
     startTransaction('Removing child pool...');
     try {
-      await actions.removeChildPool.mutateAsync({ pool, index });
+      await actions.removeChildPool.mutateAsync({ pool, index, v1PoolId });
       refetchAll();
     } finally {
       endTransaction();
     }
   };
 
-  const handleUpdateAllocation = async (index: number, walletAddr: string) => {
+  const handleUpdateAllocation = async (index: number, walletAddr: string, v1PoolId: string) => {
     const val = allocationInputs[walletAddr];
     if (!val || isNaN(Number(val))) return;
     const bps = Number(val) * 100;
 
     startTransaction('Updating allocation...');
     try {
-      await actions.updateChildAllocation.mutateAsync({ pool, index, allocation: bps });
+      await actions.updateChildAllocation.mutateAsync({ pool, index, allocation: bps, v1PoolId });
       refetchAll();
     } finally {
       endTransaction();
@@ -169,11 +171,10 @@ export function ChildPoolsManager({ pool }: { pool: Pool }) {
           <Tooltip>
             <TooltipTrigger asChild>
               <span
-                className={`text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5 ${
-                  isAllocationComplete
-                    ? 'bg-success/10 text-success'
-                    : 'bg-warning/10 text-warning'
-                }`}
+                className={`text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5 ${isAllocationComplete
+                  ? 'bg-success/10 text-success'
+                  : 'bg-warning/10 text-warning'
+                  }`}
               >
                 {isAllocationComplete ? (
                   <Check className="h-3 w-3" />
@@ -255,7 +256,7 @@ export function ChildPoolsManager({ pool }: { pool: Pool }) {
                           variant="secondary"
                           className="h-8 text-xs px-3 hover:bg-primary/20 hover:text-primary transition-colors"
                           disabled={!allocationInputs[cp.wallet]}
-                          onClick={() => handleUpdateAllocation(cp.index, cp.wallet)}
+                          onClick={() => handleUpdateAllocation(cp.index, cp.wallet, cp.v1PoolId)}
                         >
                           Update
                         </Button>
@@ -263,7 +264,7 @@ export function ChildPoolsManager({ pool }: { pool: Pool }) {
                           size="sm"
                           variant="outline"
                           className="h-8 text-[10px] border-destructive/50 text-destructive hover:bg-destructive/10"
-                          onClick={() => handleRemove(cp.index)}
+                          onClick={() => handleRemove(cp.index, cp.v1PoolId)}
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>

@@ -6,7 +6,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export type AppUserRole = 'borrower' | 'lender' | 'manager';
+export type AppUserRole = 'borrower' | 'lender' | 'manager' | 'admin';
 
 @Entity('users')
 export class UserEntity {

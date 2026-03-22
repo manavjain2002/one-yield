@@ -11,6 +11,10 @@ import { ThemeToggle } from './ThemeToggle';
 import logo from '@/assets/oneyield-logo.png';
 
 const roleNavItems = {
+  admin: [
+    { label: 'Admin', path: '/admin', icon: LayoutDashboard },
+    { label: 'Drafts', path: '/admin/pool-drafts', icon: Briefcase },
+  ],
   borrower: [
     { label: 'Dashboard', path: '/borrower', icon: LayoutDashboard },
     { label: 'My Pools', path: '/borrower/pools', icon: Briefcase },
@@ -27,11 +31,11 @@ const roleNavItems = {
 };
 
 export function Navbar() {
-  const { address, role, network, balance, disconnect } = useWallet();
+  const { address, username, role, network, balance, disconnect } = useWallet();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const navItems = role ? roleNavItems[role] : [];
+  const navItems = role ? roleNavItems[role as keyof typeof roleNavItems] ?? [] : [];
 
   return (
     <>
@@ -80,7 +84,9 @@ export function Navbar() {
             {/* Wallet Address */}
             <div className="flex items-center gap-2 rounded-full border border-border bg-secondary px-3 py-1.5">
               <Wallet className="h-3.5 w-3.5 text-primary" />
-              <span className="text-xs font-medium text-foreground">{address?.slice(0, 8)}...</span>
+              <span className="text-xs font-medium text-foreground">
+                {address ? `${address.slice(0, 8)}…` : username ?? '—'}
+              </span>
             </div>
 
             <ThemeToggle />

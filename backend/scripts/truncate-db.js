@@ -13,7 +13,7 @@ async function truncate() {
   try {
     await client.connect();
     console.log('Connected to database. Truncating tables...');
-    
+
     // Ordered to handle potential FK constraints if CASCADE isn't enough or to be explicit
     const tables = [
       'borrower_pools',
@@ -24,7 +24,8 @@ async function truncate() {
       'aum_history',
       'queue_jobs',
       'contract_registry',
-      'borrower_wallets'
+      'borrower_wallets',
+      'users'
     ];
 
     for (const table of tables) {

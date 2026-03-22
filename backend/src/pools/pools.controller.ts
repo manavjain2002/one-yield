@@ -4,14 +4,17 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   Patch,
   Post,
   Query,
+  StreamableFile,
   UseGuards,
   UseInterceptors,
   UploadedFile,
 } from '@nestjs/common';
+import { createReadStream } from 'fs';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   IsArray,
@@ -97,12 +100,15 @@ class RecordActivityBody {
   @IsOptional() @IsString() poolId?: string;
   @IsOptional() @IsString() tokenAddress?: string;
   @IsOptional() @IsString() toAddress?: string;
+  @IsOptional() @IsString() v1PoolId?: string;
 }
 
 class ConfirmTxBody {
   @IsString() txHash: string;
   @IsString() type: string;
   @IsOptional() @IsString() poolId?: string;
+  @IsOptional() @IsString() v1PoolId?: string;
+  @IsOptional() @IsString() draftId?: string;
 }
 
 class AddChildPoolBody {
@@ -172,8 +178,8 @@ export class PoolsController {
   }
 
   /**
-   * POST /pools — Creates a draft and returns encoded tx data.
-   * The borrower sends the createPool tx from their MetaMask wallet.
+   * POST /pools — Saves a draft and optional compliance file for admin review.
+   * On-chain pool creation is done by an admin from the admin portal.
    */
   @Post()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -191,7 +197,6 @@ export class PoolsController {
     const poolTokenAddress = this.config.get<string>('blockchain.poolTokenAddress')?.trim();
     if (!poolTokenAddress) throw new BadRequestException('POOL_TOKEN_ADDRESS must be configured');
 
-    // Trigger direct contract creation by the backend manager wallet
     const identifier = user.walletAddress || user.username || user.userId;
     return this.pools.createPoolDirect(identifier, {
       name: body.name,
@@ -269,7 +274,13 @@ export class PoolsController {
   @Post('confirm-tx')
   @UseGuards(JwtAuthGuard)
   confirmTx(@Body() body: ConfirmTxBody) {
-    return this.pools.confirmTransaction(body.txHash, body.type, body.poolId);
+    return this.pools.confirmTransaction(
+      body.txHash,
+      body.type,
+      body.poolId,
+      body.v1PoolId,
+      body.draftId,
+    );
   }
 
   @Post(':id/child-pools')
@@ -433,5 +444,50 @@ export class ManagerRoutesController {
     @Query('limit') limit: number = 10,
   ) {
     return this.poolsService.getManagerTransactions(page, limit);
+  }
+}
+
+// ─── Admin Routes ────────────────────────────────────────────
+
+@Controller('admin')
+export class AdminRoutesController {
+  constructor(private readonly pools: PoolsService) {}
+
+  @Get('pools')
+  @SkipThrottle()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  listPools(@Query('status') status?: PoolEntity['status']) {
+    return this.pools.listPools(status);
+  }
+
+  @Get('pool-drafts')
+  @SkipThrottle()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  listDrafts() {
+    return this.pools.listPendingPoolDraftsForAdmin();
+  }
+
+  @Get('pool-drafts/:id')
+  @SkipThrottle()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  getDraft(@Param('id') id: string) {
+    return this.pools.getPoolDraftForAdmin(id);
+  }
+
+  @Get('pool-drafts/:id/file')
+  @SkipThrottle()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  @Header('Content-Type', 'application/octet-stream')
+  async downloadDraftFile(@Param('id') id: string) {
+    const { absolutePath, downloadName } = await this.pools.resolveDraftFileForDownload(id);
+    const stream = createReadStream(absolutePath);
+    const safeName = downloadName.replace(/[\r\n"]/g, '_');
+    return new StreamableFile(stream, {
+      disposition: `attachment; filename="${safeName}"`,
+    });
   }
 }

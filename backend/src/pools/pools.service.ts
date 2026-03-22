@@ -4,6 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { mkdir, writeFile } from 'fs/promises';
+import { createReadStream } from 'fs';
+import { randomUUID } from 'crypto';
+import { extname, join, resolve } from 'path';
+import { ethers } from 'ethers';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -162,8 +167,8 @@ export class PoolsService {
   // ─── Pool Creation (borrower signs tx from frontend) ──────
 
   /**
-   * Saves a pool draft and immediately executes the transaction using the configured
-   * manager private key. Optionally handles an uploaded file for off-chain metrics.
+   * Saves a pool draft and optional compliance file. On-chain creation is performed
+   * by an admin from the portal; this path does not send a factory transaction.
    */
   async createPoolDirect(borrowerIdentifier: string, dto: CreatePoolDto, file?: Express.Multer.File) {
     if (!dto.poolTokenAddress?.trim()) {
@@ -173,13 +178,6 @@ export class PoolsService {
 
     const normalizedBorrower = (borrowerIdentifier || 'anonymous').trim().toLowerCase();
 
-    // The backend uses its own manager private key to send the transaction directly.
-    const managerPk = this.config.get<string>('POOL_MANAGER_PRIVATE_KEY');
-    if (!managerPk) {
-      throw new BadRequestException('POOL_MANAGER_PRIVATE_KEY must be configured on the backend (.env)');
-    }
-
-    // Save draft (will be linked to on-chain pool by indexer)
     const draft = this.drafts.create({
       borrowerIdentifier: normalizedBorrower,
       name: dto.name,
@@ -192,96 +190,85 @@ export class PoolsService {
       feeCollectorAddress: dto.feeCollectorAddress,
     });
 
-    // Log the file upload to demonstrate handling the compliance document
-    if (file) {
-      console.log(`[File Received] Pool Creation document: ${file.originalname} (${file.size} bytes)`);
+    if (file?.buffer?.length) {
+      const uploadRoot =
+        this.config.get<string>('UPLOAD_DIR')?.trim() || join(process.cwd(), 'uploads');
+      const relDir = 'pool-drafts';
+      const absDir = join(uploadRoot, relDir);
+      await mkdir(absDir, { recursive: true });
+      const ext = extname(file.originalname || '') || '.bin';
+      const storedName = `${randomUUID()}${ext}`;
+      const absPath = join(absDir, storedName);
+      await writeFile(absPath, file.buffer);
+      draft.documentPath = join(relDir, storedName).replace(/\\/g, '/');
+      draft.documentOriginalName = file.originalname || storedName;
     }
 
     await this.drafts.save(draft);
 
-    try {
-      const { ethers } = await import('ethers');
-      const factory = this.contracts.factory('role_manager');
+    return {
+      draftId: draft.id,
+      status: 'pending_approval',
+      message:
+        'Draft submitted for review. An administrator will create the pool on-chain after approval.',
+    };
+  }
 
-      const tx = await factory.createPool(
-        dto.name,
-        dto.symbol,
-        dto.poolManagerAddress || this.config.get<string>('POOL_MANAGER_ADDRESS'),
-        dto.poolTokenAddress,
-        dto.oracleManagerAddress || this.config.get<string>('ORACLE_MANAGER_ADDRESS'),
-        dto.feeCollectorAddress || this.config.get<string>('FEE_COLLECTOR_ADDRESS'),
-        BigInt(dto.apyBasisPoints),
-        BigInt(dto.poolSize)
-      );
+  async listPendingPoolDraftsForAdmin() {
+    const rows = await this.drafts.find({
+      where: { indexed: false },
+      order: { createdAt: 'DESC' },
+    });
+    return rows.map((d) => ({
+      id: d.id,
+      borrowerIdentifier: d.borrowerIdentifier,
+      name: d.name,
+      symbol: d.symbol,
+      apyBasisPoints: d.apyBasisPoints,
+      poolSize: d.poolSize,
+      poolTokenAddress: d.poolTokenAddress,
+      hasDocument: Boolean(d.documentPath),
+      documentOriginalName: d.documentOriginalName,
+      createdAt: d.createdAt,
+    }));
+  }
 
-      const receipt = await tx.wait();
+  async getPoolDraftForAdmin(id: string) {
+    const d = await this.drafts.findOne({ where: { id } });
+    if (!d) throw new NotFoundException('Draft not found');
+    return {
+      id: d.id,
+      borrowerIdentifier: d.borrowerIdentifier,
+      name: d.name,
+      symbol: d.symbol,
+      apyBasisPoints: d.apyBasisPoints,
+      poolSize: d.poolSize,
+      poolTokenAddress: d.poolTokenAddress,
+      poolManagerAddress: d.poolManagerAddress,
+      oracleManagerAddress: d.oracleManagerAddress,
+      feeCollectorAddress: d.feeCollectorAddress,
+      hasDocument: Boolean(d.documentPath),
+      documentOriginalName: d.documentOriginalName,
+      indexed: d.indexed,
+      txHash: d.txHash,
+      createdAt: d.createdAt,
+    };
+  }
 
-      // Parse PoolCreated event to extract pool + fund manager addresses
-      const { ethers: ethersLib } = await import('ethers');
-      const iface = new ethersLib.Interface(POOL_FACTORY_ABI);
-      let poolAddr = '';
-      let fmAddr = '';
-      for (const log of receipt.logs) {
-        try {
-          const parsed = iface.parseLog({ topics: [...log.topics], data: log.data });
-          if (parsed?.name === 'PoolCreated') {
-            poolAddr = String(parsed.args._pool).toLowerCase();
-            fmAddr = String(parsed.args._assetManager).toLowerCase();
-            break;
-          }
-        } catch { }
-      }
-
-      draft.txHash = tx.hash;
-      draft.indexed = true;
-      await this.drafts.save(draft);
-
-      // Create real PoolEntity from event data
-      if (poolAddr) {
-        const pool = this.pools.create({
-          contractAddress: poolAddr,
-          fundManagerAddress: fmAddr,
-          name: dto.name,
-          symbol: dto.symbol,
-          status: 'pending',
-          poolTokenAddress: dto.poolTokenAddress,
-          lpTokenAddress: poolAddr,
-          apyBasisPoints: dto.apyBasisPoints,
-          poolSize: dto.poolSize,
-          assetUnderManagement: '0',
-          borrowerAddress: normalizedBorrower,
-          feeCollectorAddress: dto.feeCollectorAddress,
-          poolManagerAddress: dto.poolManagerAddress,
-          oracleManagerAddress: dto.oracleManagerAddress,
-        });
-        await this.pools.save(pool);
-      }
-
-      const txRecord = this.txs.create({
-        txHash: tx.hash,
-        type: 'create_pool',
-        fromAddress: this.contracts.getSigner('role_manager').address,
-        toAddress: this.contracts.factoryAddress(),
-        status: 'confirmed',
-        amount: draft.poolSize,
-        tokenAddress: draft.poolTokenAddress,
-        poolAddress: poolAddr || tx.hash,
-      });
-      await this.txs.save(txRecord);
-
-      return {
-        draftId: draft.id,
-        txHash: tx.hash,
-        poolAddress: poolAddr,
-        status: 'success'
-      };
-    } catch (err: unknown) {
-      console.error('❌ Direct pool creation failed:', err);
-      draft.indexed = true; // Mark as done so it doesn't stay pending
-      await this.drafts.save(draft);
-      const msg = (err as any).reason ?? (err as any).message ?? 'Unknown error';
-      throw new BadRequestException(`Blockchain deployment failed: ${msg}`);
+  async resolveDraftFileForDownload(id: string): Promise<{ absolutePath: string; downloadName: string }> {
+    const d = await this.drafts.findOne({ where: { id } });
+    if (!d?.documentPath) throw new NotFoundException('No file for this draft');
+    if (d.documentPath.includes('..')) throw new BadRequestException('Invalid stored path');
+    const uploadRoot = this.config.get<string>('UPLOAD_DIR')?.trim() || join(process.cwd(), 'uploads');
+    const abs = resolve(join(uploadRoot, d.documentPath));
+    const rootResolved = resolve(uploadRoot);
+    if (!abs.startsWith(rootResolved + '/') && abs !== rootResolved) {
+      throw new BadRequestException('Invalid file path');
     }
+    return {
+      absolutePath: abs,
+      downloadName: d.documentOriginalName || 'document',
+    };
   }
 
   // ─── Allocations ───────────────────────────────────────────
@@ -466,7 +453,8 @@ export class PoolsService {
     if (addr || uname) {
       pools = await query.orderBy('p.createdAt', 'DESC').getMany();
     }
-    console.log("🚀 ~ PoolsService ~ borrowerPoolsFor ~ pools:", pools)
+
+    const enrichedPools = await Promise.all(pools.map((p) => this.enrichPool(p)));
 
     // Also fetch drafts by identifier
     const whereConditions: any[] = [];
@@ -479,7 +467,7 @@ export class PoolsService {
 
     const pendingPools = drafts.map((d) => this.mapDraftToPoolEntity(d));
 
-    return [...pendingPools, ...pools];
+    return [...pendingPools, ...enrichedPools];
   }
 
   async getBorrowerWallets(borrowerIdentifier: string) {
@@ -519,8 +507,9 @@ export class PoolsService {
 
   async managerSummary() {
     const all = await this.pools.find({ relations: ['borrowerPools'] });
+    const enrichedAll = await Promise.all(all.map((p) => this.enrichPool(p)));
     let totalAum = 0n;
-    for (const p of all) {
+    for (const p of enrichedAll) {
       totalAum += BigInt(p.assetUnderManagement || '0');
     }
 
@@ -530,7 +519,7 @@ export class PoolsService {
     });
     const pendingPools = drafts.map((d) => this.mapDraftToPoolEntity(d));
 
-    const combinedPools = [...pendingPools, ...all];
+    const combinedPools = [...pendingPools, ...enrichedAll];
 
     return {
       poolCount: combinedPools.length,
@@ -595,6 +584,21 @@ export class PoolsService {
     };
   }
   async recordManualActivity(fromAddress: string, dto: any) {
+    const existing = await this.txs.findOne({ where: { txHash: dto.txHash } });
+    if (existing) {
+      existing.type = dto.type as TxType;
+      existing.fromAddress = fromAddress ?? existing.fromAddress;
+      existing.toAddress = dto.toAddress ?? existing.toAddress;
+      existing.amount = dto.amount ?? existing.amount;
+      existing.tokenAddress = dto.tokenAddress ?? existing.tokenAddress;
+      existing.poolId = dto.poolId ?? existing.poolId;
+      if (dto.status === 'confirmed') {
+        existing.status = 'confirmed';
+        existing.confirmedAt = new Date();
+      }
+      await this.txs.save(existing);
+      return { success: true, txId: existing.id };
+    }
     const tx = this.txs.create({
       txHash: dto.txHash,
       type: dto.type as TxType,
@@ -612,7 +616,13 @@ export class PoolsService {
 
   // ─── Inline TX Confirmation (replaces indexer) ─────────────
 
-  async confirmTransaction(txHash: string, type: string, poolId?: string) {
+  async confirmTransaction(
+    txHash: string,
+    type: string,
+    poolId?: string,
+    v1PoolId?: string,
+    draftId?: string,
+  ) {
     if (!txHash) throw new BadRequestException('txHash is required');
 
     const existingTx = await this.txs.findOne({ where: { txHash } });
@@ -660,13 +670,89 @@ export class PoolsService {
         break;
       }
       case 'create_pool': {
-        if (txHash) {
-          const draft = await this.drafts.findOne({ where: { txHash } });
-          if (draft && !draft.indexed) {
-            draft.indexed = true;
-            await this.drafts.save(draft);
+        const receipt = await this.contracts.getProvider().getTransactionReceipt(txHash);
+        if (!receipt) throw new BadRequestException('Transaction receipt not found');
+        const iface = new ethers.Interface([...POOL_FACTORY_ABI]);
+        let poolAddr = '';
+        let fmAddr = '';
+        for (const log of receipt.logs) {
+          try {
+            const parsed = iface.parseLog({ topics: [...log.topics], data: log.data });
+            if (parsed?.name === 'PoolCreated') {
+              poolAddr = String(parsed.args._pool).toLowerCase();
+              fmAddr = String(parsed.args._assetManager).toLowerCase();
+              break;
+            }
+          } catch {
+            /* non-matching log */
           }
         }
+        if (!poolAddr) throw new BadRequestException('PoolCreated event not found in receipt');
+
+        let draft: PoolDraftEntity | null = null;
+        if (draftId) {
+          draft = await this.drafts.findOne({ where: { id: draftId } });
+        }
+        if (!draft) {
+          draft = await this.drafts.findOne({ where: { txHash } });
+        }
+        if (!draft) {
+          throw new BadRequestException('Pool draft not found; include draftId from the approval flow');
+        }
+
+        const existingPool = await this.pools.findOne({ where: { contractAddress: poolAddr } });
+        if (existingPool) {
+          draft.txHash = txHash;
+          draft.indexed = true;
+          await this.drafts.save(draft);
+          break;
+        }
+
+        draft.txHash = txHash;
+        draft.indexed = true;
+        await this.drafts.save(draft);
+
+        const normalizedBorrower = (draft.borrowerIdentifier || '').trim().toLowerCase();
+        const pool = this.pools.create({
+          contractAddress: poolAddr,
+          fundManagerAddress: fmAddr,
+          name: draft.name,
+          symbol: draft.symbol,
+          status: 'pending',
+          poolTokenAddress: draft.poolTokenAddress,
+          lpTokenAddress: poolAddr,
+          apyBasisPoints: draft.apyBasisPoints,
+          poolSize: draft.poolSize,
+          assetUnderManagement: '0',
+          borrowerAddress: normalizedBorrower,
+          feeCollectorAddress: draft.feeCollectorAddress,
+          poolManagerAddress: draft.poolManagerAddress,
+          oracleManagerAddress: draft.oracleManagerAddress,
+        });
+        await this.pools.save(pool);
+
+        let txRow = existingTx;
+        if (!txRow) {
+          txRow = this.txs.create({
+            txHash,
+            type: 'create_pool',
+            fromAddress: null,
+            toAddress: this.contracts.factoryAddress(),
+            poolId: pool.id,
+            poolAddress: poolAddr,
+            amount: draft.poolSize,
+            tokenAddress: draft.poolTokenAddress,
+            status: 'confirmed',
+            confirmedAt: new Date(),
+          });
+        } else {
+          txRow.status = 'confirmed';
+          txRow.confirmedAt = new Date();
+          txRow.type = 'create_pool';
+          txRow.poolId = pool.id;
+          txRow.poolAddress = poolAddr;
+        }
+        await this.txs.save(txRow);
         break;
       }
       case 'deposit': {
@@ -727,13 +813,18 @@ export class PoolsService {
         if (!poolId) break;
         const pool = await this.pools.findOne({ where: { id: poolId } });
         if (!pool) break;
-        if (existingTx?.fromAddress && existingTx?.amount) {
-          const walletAddr = existingTx.fromAddress.toLowerCase();
-          const bp = await this.borrowerPools.findOne({
-            where: { poolId, dedicatedWalletAddress: walletAddr },
-          });
+        if (existingTx?.amount) {
+          const amt = BigInt(existingTx.amount || '0');
+          let bp: BorrowerPoolEntity | null = null;
+          if (v1PoolId) {
+            bp = await this.borrowerPools.findOne({ where: { poolId, v1PoolId } });
+          }
+          if (!bp && existingTx.fromAddress) {
+            const walletAddr = existingTx.fromAddress.toLowerCase();
+            const rows = await this.borrowerPools.find({ where: { poolId } });
+            bp = rows.find((r) => r.dedicatedWalletAddress.toLowerCase() === walletAddr) ?? null;
+          }
           if (bp) {
-            const amt = BigInt(existingTx.amount || '0');
             bp.fundsRepaid = (BigInt(bp.fundsRepaid || '0') + amt).toString();
             await this.borrowerPools.save(bp);
           }
@@ -752,16 +843,20 @@ export class PoolsService {
         if (!poolId) break;
         const pool = await this.pools.findOne({ where: { id: poolId } });
         if (!pool) break;
-        if (type === 'deploy_funds' || type === 'send_to_reserve') {
-          if (existingTx?.amount) {
-            const bp = await this.borrowerPools.findOne({
-              where: { poolId },
-            });
-            if (bp) {
-              const amt = BigInt(existingTx.amount || '0');
-              bp.fundsDeployed = (BigInt(bp.fundsDeployed || '0') + amt).toString();
-              await this.borrowerPools.save(bp);
+        if (type === 'deploy_funds' && existingTx?.amount) {
+          const rows = await this.borrowerPools.find({ where: { poolId } });
+          const totalBps = rows.reduce((s, r) => s + (r.allocationBps || 0), 0);
+          const totalAmt = BigInt(existingTx.amount || '0');
+          if (rows.length > 0 && totalBps > 0) {
+            for (const r of rows) {
+              const share = (totalAmt * BigInt(r.allocationBps)) / BigInt(totalBps);
+              r.fundsDeployed = (BigInt(r.fundsDeployed || '0') + share).toString();
+              await this.borrowerPools.save(r);
             }
+          } else if (rows.length === 1) {
+            const r = rows[0];
+            r.fundsDeployed = (BigInt(r.fundsDeployed || '0') + totalAmt).toString();
+            await this.borrowerPools.save(r);
           }
         }
         try {
@@ -784,7 +879,7 @@ export class PoolsService {
 
     const existing = await this.borrowerPools.findOne({ where: { poolId, v1PoolId } });
     if (existing) {
-      existing.dedicatedWalletAddress = dedicatedWalletAddress;
+      existing.dedicatedWalletAddress = dedicatedWalletAddress.toLowerCase();
       if (allocationBps !== undefined) existing.allocationBps = allocationBps;
       await this.borrowerPools.save(existing);
       return existing;
@@ -795,7 +890,7 @@ export class PoolsService {
       fundManagerAddress: pool.fundManagerAddress,
       v1PoolId,
       allocationBps: allocationBps ?? 0,
-      dedicatedWalletAddress,
+      dedicatedWalletAddress: dedicatedWalletAddress.toLowerCase(),
     });
     await this.borrowerPools.save(row);
     return row;
@@ -812,13 +907,16 @@ export class PoolsService {
     const row = await this.borrowerPools.findOne({ where: { poolId, v1PoolId } });
     if (!row) throw new NotFoundException('Child pool not found');
     if (updates.allocationBps !== undefined) row.allocationBps = updates.allocationBps;
-    if (updates.dedicatedWalletAddress) row.dedicatedWalletAddress = updates.dedicatedWalletAddress;
+    if (updates.dedicatedWalletAddress) {
+      row.dedicatedWalletAddress = updates.dedicatedWalletAddress.toLowerCase();
+    }
     await this.borrowerPools.save(row);
     return row;
   }
 
   async getBorrowerWalletsForPool(poolId: string) {
     const pool = await this.pools.findOne({ where: { id: poolId } });
+    console.log("🚀 ~ PoolsService ~ getBorrowerWalletsForPool ~ pool:", pool)
     if (!pool) throw new NotFoundException('Pool not found');
     return this.borrowerWallets.find({
       where: { tokenAddress: pool.poolTokenAddress },

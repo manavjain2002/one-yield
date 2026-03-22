@@ -24,9 +24,9 @@ export function useManagerActions() {
     }
   };
 
-  const confirmTx = async (txHash: string, type: string, poolId?: string) => {
+  const confirmTx = async (txHash: string, type: string, poolId?: string, v1PoolId?: string) => {
     try {
-      await api.post('/pools/confirm-tx', { txHash, type, poolId });
+      await api.post('/pools/confirm-tx', { txHash, type, poolId, v1PoolId });
     } catch (e) {
       console.error('[ConfirmTx] Failed:', e);
     }
@@ -44,72 +44,6 @@ export function useManagerActions() {
         await tx.wait();
         toast.success(`Pool ${pool.name} activated successfully!`, { id: tid });
         await confirmTx(tx.hash, 'activate', pool.id);
-      } catch (err) {
-        toast.error(getErrorMessage(err), { id: tid });
-        throw err;
-      }
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['manager-summary'] });
-    },
-  });
-
-  // Pause Pool (direct contract call)
-  const pausePool = useMutation({
-    mutationFn: async (pool: Pool) => {
-      const tid = toast.loading('Waiting for MetaMask signature to pause pool...');
-      try {
-        if (!pool.contractAddress) throw new Error('Pool contract address not found.');
-        const contract = await getLendingPool(pool.contractAddress);
-        const tx = await contract.pause();
-        toast.loading('Pausing pool...', { id: tid });
-        await tx.wait();
-        toast.success(`Pool ${pool.name} paused successfully!`, { id: tid });
-        await confirmTx(tx.hash, 'pause', pool.id);
-      } catch (err) {
-        toast.error(getErrorMessage(err), { id: tid });
-        throw err;
-      }
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['manager-summary'] });
-    },
-  });
-
-  // Unpause Pool (direct contract call)
-  const unpausePool = useMutation({
-    mutationFn: async (pool: Pool) => {
-      const tid = toast.loading('Waiting for MetaMask signature to unpause pool...');
-      try {
-        if (!pool.contractAddress) throw new Error('Pool contract address not found.');
-        const contract = await getLendingPool(pool.contractAddress);
-        const tx = await contract.unpause();
-        toast.loading('Unpausing pool...', { id: tid });
-        await tx.wait();
-        toast.success(`Pool ${pool.name} unpaused successfully!`, { id: tid });
-        await confirmTx(tx.hash, 'unpause', pool.id);
-      } catch (err) {
-        toast.error(getErrorMessage(err), { id: tid });
-        throw err;
-      }
-    },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['manager-summary'] });
-    },
-  });
-
-  // Close Pool (direct contract call)
-  const closePool = useMutation({
-    mutationFn: async (pool: Pool) => {
-      const tid = toast.loading('Waiting for MetaMask signature to close pool...');
-      try {
-        if (!pool.contractAddress) throw new Error('Pool contract address not found.');
-        const contract = await getLendingPool(pool.contractAddress);
-        const tx = await contract.close();
-        toast.loading('Closing pool...', { id: tid });
-        await tx.wait();
-        toast.success(`Pool ${pool.name} closed successfully!`, { id: tid });
-        await confirmTx(tx.hash, 'close', pool.id);
       } catch (err) {
         toast.error(getErrorMessage(err), { id: tid });
         throw err;
@@ -210,47 +144,66 @@ export function useManagerActions() {
       try {
         if (!pool.fundManagerAddress) throw new Error('Fund Manager address missing.');
         const fm = await getAssetManager(pool.fundManagerAddress);
-        console.log('wallet', wallet);
         const tx = await fm.addPool(v1PoolId, allocationVal, wallet);
         toast.loading('Adding child pool...', { id: tid });
         await tx.wait();
+        await api.post(`/pools/${pool.id}/child-pools`, {
+          v1PoolId,
+          dedicatedWalletAddress: wallet.toLowerCase(),
+          allocationBps: allocationVal,
+        });
         toast.success(`Child pool ${v1PoolId} added successfully!`, { id: tid });
       } catch (err) {
         toast.error(getErrorMessage(err), { id: tid });
         throw err;
       }
     },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['on-chain-pools'] });
+      void queryClient.invalidateQueries({ queryKey: ['pool-borrower-wallets'] });
+      void queryClient.invalidateQueries({ queryKey: ['manager-summary'] });
+    },
   });
 
   const removeChildPool = useMutation({
-    mutationFn: async ({ pool, index }: { pool: Pool, index: number }) => {
+    mutationFn: async ({ pool, index, v1PoolId }: { pool: Pool, index: number, v1PoolId: string }) => {
       const tid = toast.loading('Waiting for MetaMask signature to remove child pool...');
       try {
         const fm = await getAssetManager(pool.fundManagerAddress);
         const tx = await fm.removePool(index);
         toast.loading('Removing child pool...', { id: tid });
         await tx.wait();
+        await api.delete(`/pools/${pool.id}/child-pools/${encodeURIComponent(v1PoolId)}`);
         toast.success(`Child pool removed successfully!`, { id: tid });
       } catch (err) {
         toast.error(getErrorMessage(err), { id: tid });
         throw err;
       }
     },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['on-chain-pools'] });
+      void queryClient.invalidateQueries({ queryKey: ['manager-summary'] });
+    },
   });
 
   const updateChildAllocation = useMutation({
-    mutationFn: async ({ pool, index, allocation }: { pool: Pool, index: number, allocation: number }) => {
+    mutationFn: async ({ pool, index, allocation, v1PoolId }: { pool: Pool, index: number, allocation: number, v1PoolId: string }) => {
       const tid = toast.loading('Waiting for MetaMask signature to set allocation...');
       try {
         const fm = await getAssetManager(pool.fundManagerAddress);
         const tx = await fm.updatePoolAllocation(index, allocation);
         toast.loading('Setting allocation...', { id: tid });
         await tx.wait();
+        await api.patch(`/pools/${pool.id}/child-pools/${encodeURIComponent(v1PoolId)}`, { allocationBps: allocation });
         toast.success(`Allocation updated successfully!`, { id: tid });
       } catch (err) {
         toast.error(getErrorMessage(err), { id: tid });
         throw err;
       }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['on-chain-pools'] });
+      void queryClient.invalidateQueries({ queryKey: ['manager-summary'] });
     },
   });
 
@@ -262,19 +215,23 @@ export function useManagerActions() {
         const tx = await fm.updatePoolWallet(v1PoolId, wallet);
         toast.loading('Updating wallet...', { id: tid });
         await tx.wait();
+        await api.patch(`/pools/${pool.id}/child-pools/${encodeURIComponent(v1PoolId)}`, {
+          dedicatedWalletAddress: wallet.toLowerCase(),
+        });
         toast.success(`Wallet updated successfully!`, { id: tid });
       } catch (err) {
         toast.error(getErrorMessage(err), { id: tid });
         throw err;
       }
     },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['on-chain-pools'] });
+      void queryClient.invalidateQueries({ queryKey: ['manager-summary'] });
+    },
   });
 
   return {
     activatePool,
-    pausePool,
-    unpausePool,
-    closePool,
     sweepToFundManager,
     refillPool,
     releaseToBorrowers,

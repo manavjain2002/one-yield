@@ -45,6 +45,13 @@ export class PoolDraftEntity {
   @Column({ default: false })
   indexed: boolean;
 
+  /** Relative path under UPLOAD_DIR (e.g. pool-drafts/uuid.pdf) */
+  @Column({ nullable: true })
+  documentPath: string | null;
+
+  @Column({ nullable: true })
+  documentOriginalName: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -1,0 +1,29 @@
+⚠️ Low HBAR balance.You may not have enough to cover transaction fees.
+ Dont display this until the web3 wallet is not connected for borrower and admin.
+
+ Child Pools / Wallet Allocations
+Manage borrower wallet allocations for fund deployment
+
+On - chain: 0 %
+
+        No borrower wallets configured for this pool's token.
+
+Ask the borrower to register a dedicated wallet for this pool's accepted token.
+For this, here as a borrower, i have added one wallet, but it is not visible here in this options
+
+
+
+async getBorrowerWalletsForPool(poolId: string) {
+    const pool = await this.pools.findOne({ where: { id: poolId } });
+    if (!pool) throw new NotFoundException('Pool not found');
+    return this.borrowerWallets.find({
+        where: { tokenAddress: pool.poolTokenAddress },
+    });
+}
+
+Here in the borrower wallets, you are fetching the data based on token address, but here you should also add the filter based on the borrower identifier.
+
+the activate button in pool manager dashboard should be disabled until the admin has created the pool for it, so maintain that thing too, also the contract address stored in draft pool is not CornerLeftUpIcon, make it empty until it is deployed, and then add the value of it in the db.
+
+
+If the pool is paused, do not enable the pause button for admin, for this, you can read the variable of paused, 

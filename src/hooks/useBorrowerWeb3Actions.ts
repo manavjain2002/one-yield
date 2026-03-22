@@ -15,9 +15,9 @@ export function useBorrowerWeb3Actions({ poolTokenAddress, fundManagerAddress, p
   const { address: wagmiAddress, isConnected } = useAccount();
   const queryClient = useQueryClient();
 
-  const confirmTx = async (txHash: string, type: string, poolId?: string) => {
+  const confirmTx = async (txHash: string, type: string, poolId?: string, v1PoolId?: string) => {
     try {
-      await api.post('/pools/confirm-tx', { txHash, type, poolId });
+      await api.post('/pools/confirm-tx', { txHash, type, poolId, v1PoolId });
     } catch (e) {
       console.error('[ConfirmTx] Failed:', e);
     }
@@ -99,7 +99,7 @@ export function useBorrowerWeb3Actions({ poolTokenAddress, fundManagerAddress, p
         } catch (e) {
           console.error('[Audit] Failed to record activity:', e);
         }
-        await confirmTx(tx.hash, 'repay', poolId);
+        await confirmTx(tx.hash, 'repay', poolId, v1PoolId);
 
       } catch (err) {
         toast.error(getErrorMessage(err), { id: tid });

@@ -46,8 +46,8 @@ class VerifyDto {
 }
 
 class SetRoleDto {
-  @IsIn(['borrower', 'lender', 'manager'])
-  role: 'borrower' | 'lender' | 'manager';
+  @IsIn(['borrower', 'lender', 'manager', 'admin'])
+  role: 'borrower' | 'lender' | 'manager' | 'admin';
 }
 
 @Controller('auth')

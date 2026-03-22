@@ -14,6 +14,7 @@ export const POOL_FACTORY_ABI = [
   'function createPool(string _poolName, string _poolSymbol, address _poolManager, address _poolToken, address _oracleManager, address __feeCollector, uint256 _projectedAPY, uint256 _poolSize) returns (address _poolAddress, address _fundManager)',
   'function pauseTarget(address target)',
   'function unpauseTarget(address target)',
+  'function closePool(address target)',
 
   // Read
   'function totalV1Pools() view returns (uint256)',

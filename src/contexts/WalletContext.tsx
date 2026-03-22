@@ -7,7 +7,7 @@ import { useConnectModal } from '@rainbow-me/rainbowkit';
 
 export type WalletKind = 'metamask' | 'walletconnect';
 
-export type UserRole = 'borrower' | 'lender' | 'manager';
+export type UserRole = 'borrower' | 'lender' | 'manager' | 'admin';
 
 interface WalletState {
   isConnected: boolean;
@@ -25,8 +25,15 @@ interface WalletContextType extends WalletState {
   connect: () => Promise<void>;
   disconnect: () => void;
   selectRole: (role: UserRole) => Promise<void>;
-  loginUser: (username: string, passwordPlain: string) => Promise<void>;
-  registerUser: (username: string, passwordPlain: string, role: UserRole) => Promise<void>;
+  loginUser: (
+    username: string,
+    passwordPlain: string,
+  ) => Promise<{ accessToken: string; role: UserRole; username: string }>;
+  registerUser: (
+    username: string,
+    passwordPlain: string,
+    role: UserRole,
+  ) => Promise<{ accessToken: string; role: UserRole; username: string }>;
   setNeedsReAuth: (v: boolean) => void;
 }
 
@@ -254,6 +261,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         needsReAuth: false,
       }));
       toast.success('Logged in successfully');
+      return data;
     } catch (e) {
       toast.error(getErrorMessage(e));
       throw e;
@@ -280,6 +288,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         needsReAuth: false,
       }));
       toast.success('Registered successfully');
+      return data;
     } catch (e) {
       toast.error(getErrorMessage(e));
       throw e;

@@ -13,6 +13,7 @@ import { QueueModule } from '../queue/queue.module';
 import { AuthModule } from '../auth/auth.module';
 import { PoolsService } from './pools.service';
 import {
+  AdminRoutesController,
   BorrowerRoutesController,
   LenderRoutesController,
   ManagerRoutesController,
@@ -40,6 +41,7 @@ import {
     BorrowerRoutesController,
     LenderRoutesController,
     ManagerRoutesController,
+    AdminRoutesController,
   ],
   providers: [PoolsService],
   exports: [PoolsService],

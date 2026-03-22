@@ -38,14 +38,17 @@ export function useCreatePool() {
         formData.append('file', payload.file);
       }
 
-      const tid = toast.loading('Submitting pool creation request...');
+      const tid = toast.loading('Submitting pool draft...');
       try {
         const { data } = await api.post('/pools', formData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           },
         });
-        toast.success('Pool created successfully!', { id: tid });
+        toast.success(
+          (data as { message?: string })?.message ?? 'Draft submitted for admin review.',
+          { id: tid },
+        );
         return data;
       } catch (err: unknown) {
         const anyErr = err as { response?: { data?: { message?: string } }; message?: string };

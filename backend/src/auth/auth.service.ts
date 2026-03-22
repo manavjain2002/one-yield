@@ -41,8 +41,11 @@ export class AuthService implements OnModuleInit {
       admin = this.users.create({
         username: adminUsername,
         passwordHash,
-        role: 'manager', 
+        role: 'admin',
       });
+      await this.users.save(admin);
+    } else if (admin.role !== 'admin') {
+      admin.role = 'admin';
       await this.users.save(admin);
     }
   }

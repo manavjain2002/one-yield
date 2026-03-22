@@ -42,8 +42,8 @@ export default function LandingPage() {
     setIsSubmitting(true);
     try {
       if (credMode === 'login') {
-        await loginUser(username, password);
-        navigate(username === 'oyAdmin' ? '/manager' : '/borrower');
+        const session = await loginUser(username, password);
+        navigate(session.role === 'admin' ? '/admin' : '/borrower');
       } else {
         await registerUser(username, password, 'borrower');
         navigate('/borrower');

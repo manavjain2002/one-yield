@@ -15,6 +15,9 @@ import LenderPools from "./pages/lender/LenderPools";
 import LenderPortfolio from "./pages/lender/LenderPortfolio";
 import ManagerDashboard from "./pages/manager/ManagerDashboard";
 import ManagerPools from "./pages/manager/ManagerPools";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminPoolDraftsPage from "./pages/admin/AdminPoolDraftsPage";
+import AdminDraftDetailPage from "./pages/admin/AdminDraftDetailPage";
 import HistoryPage from "./pages/History";
 import NotFound from "./pages/NotFound";
 
@@ -102,6 +105,10 @@ function AppRoutes() {
       <Route path="/lender/portfolio" element={<ProtectedRoute allowedRole="lender"><LenderPortfolio /></ProtectedRoute>} />
       <Route path="/manager" element={<ProtectedRoute allowedRole="manager"><ManagerDashboard /></ProtectedRoute>} />
       <Route path="/manager/pools" element={<ProtectedRoute allowedRole="manager"><ManagerPools /></ProtectedRoute>} />
+
+      <Route path="/admin" element={<ProtectedRoute allowedRole="admin"><AdminDashboard /></ProtectedRoute>} />
+      <Route path="/admin/pool-drafts" element={<ProtectedRoute allowedRole="admin"><AdminPoolDraftsPage /></ProtectedRoute>} />
+      <Route path="/admin/pool-drafts/:draftId" element={<ProtectedRoute allowedRole="admin"><AdminDraftDetailPage /></ProtectedRoute>} />
       
       {/* Universal History */}
       <Route path="/lender/history" element={<ProtectedRoute allowedRole="lender"><HistoryPage /></ProtectedRoute>} />
