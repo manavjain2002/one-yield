@@ -468,45 +468,142 @@ export class PoolsService {
 
   // ─── Role-specific queries ────────────────────────────────
 
-  async borrowerPoolsFor(walletAddress?: string, username?: string) {
-    if (!walletAddress && !username) return [];
+  private normalizeBorrowerKeys(walletAddress?: string, username?: string) {
+    return {
+      addr: walletAddress?.trim().toLowerCase(),
+      uname: username?.trim().toLowerCase(),
+    };
+  }
 
-    let pools: PoolEntity[] = [];
-    const addr = walletAddress?.trim().toLowerCase();
-    const uname = username?.trim().toLowerCase();
+  /** Sum child borrower_pools rows for one master pool. */
+  private sumBorrowerPoolChildAmounts(p: PoolEntity): { deployed: bigint; repaid: bigint } {
+    let deployed = 0n;
+    let repaid = 0n;
+    for (const bp of p.borrowerPools ?? []) {
+      deployed += BigInt(bp.fundsDeployed || '0');
+      repaid += BigInt(bp.fundsRepaid || '0');
+    }
+    return { deployed, repaid };
+  }
 
-    const query = this.pools.createQueryBuilder('p')
+  private outstandingPrincipalNominalFromPoolEntity(p: PoolEntity): number {
+    const { deployed, repaid } = this.sumBorrowerPoolChildAmounts(p);
+    const out = deployed - repaid;
+    if (out <= 0n) return 0;
+    return Number(out) / 1e6;
+  }
+
+  /** Estimated coupon (display): principal × (APR% / 200). */
+  private couponNominalForPoolEntity(p: PoolEntity): number {
+    const pr = this.outstandingPrincipalNominalFromPoolEntity(p);
+    const apy = (p.apyBasisPoints ?? 0) / 100;
+    return pr * apy / 200;
+  }
+
+  private async loadPersistedMasterPoolsForBorrower(
+    walletAddress?: string,
+    username?: string,
+  ): Promise<PoolEntity[]> {
+    const { addr, uname } = this.normalizeBorrowerKeys(walletAddress, username);
+    if (!addr && !uname) return [];
+
+    const query = this.pools
+      .createQueryBuilder('p')
       .leftJoinAndSelect('p.borrowerPools', 'bp');
     if (addr && uname) {
       query.where('(LOWER(p.borrowerAddress) = :addr OR LOWER(p.borrowerAddress) = :uname)', { addr, uname });
     } else if (addr) {
       query.where('LOWER(p.borrowerAddress) = :addr', { addr });
-    } else if (uname) {
-      query.where('LOWER(p.borrowerAddress) = :uname', { uname });
+    } else {
+      query.where('LOWER(p.borrowerAddress) = :uname', { uname: uname! });
     }
 
+    return query.orderBy('p.createdAt', 'DESC').getMany();
+  }
 
-    console.log('query', query.getQueryAndParameters());
-
-    if (addr || uname) {
-      pools = await query.orderBy('p.createdAt', 'DESC').getMany();
+  /**
+   * Requirement 8 — portfolio KPIs from all persisted master pools (Σ child deployed − Σ child repaid).
+   * Does not call other borrower dashboard export methods.
+   */
+  async getBorrowerDashboardSummary(walletAddress?: string, username?: string) {
+    const list = await this.loadPersistedMasterPoolsForBorrower(walletAddress, username);
+    let outstandingPrincipalNominal = 0;
+    let outstandingCouponNominal = 0;
+    for (const p of list) {
+      outstandingPrincipalNominal += this.outstandingPrincipalNominalFromPoolEntity(p);
+      outstandingCouponNominal += this.couponNominalForPoolEntity(p);
     }
+    const activePoolCount = list.filter((p) => p.status === 'active' || p.status === 'pending').length;
+    return {
+      outstandingPrincipalNominal,
+      outstandingCouponNominal,
+      totalDebtNominal: outstandingPrincipalNominal + outstandingCouponNominal,
+      activePoolCount,
+    };
+  }
 
-    const enrichedPools = await Promise.all(pools.map((p) => this.enrichPool(p)));
-    console.log('enrichedPools', enrichedPools);
+  /**
+   * Requirement 8 — active/pending master pools with per-pool metrics for dashboard list only.
+   */
+  async getBorrowerDashboardActivePools(walletAddress?: string, username?: string) {
+    const persisted = await this.loadPersistedMasterPoolsForBorrower(walletAddress, username);
+    const filtered = persisted.filter((p) => p.status === 'active' || p.status === 'pending');
+    const enrichedList = await Promise.all(filtered.map((p) => this.enrichPool(p)));
+    return enrichedList.map((enriched) => {
+      const p = filtered.find((x) => x.id === enriched.id)!;
+      const pr = this.outstandingPrincipalNominalFromPoolEntity(p);
+      const c = this.couponNominalForPoolEntity(p);
+      const { deployed, repaid } = this.sumBorrowerPoolChildAmounts(p);
+      return {
+        ...enriched,
+        outstandingPrincipalNominal: pr,
+        outstandingCouponNominal: c,
+        totalOutstandingNominal: pr + c,
+        totalDeployedNominal: Number(deployed) / 1e6,
+        totalRepaidNominal: Number(repaid) / 1e6,
+      };
+    });
+  }
 
-    // Also fetch drafts by identifier
+  /**
+   * Requirement 8 — full My Pools list (drafts + enriched masters) with page-specific metrics.
+   */
+  async getBorrowerMyPoolsPage(walletAddress?: string, username?: string) {
+    const { addr, uname } = this.normalizeBorrowerKeys(walletAddress, username);
+    const persisted = await this.loadPersistedMasterPoolsForBorrower(walletAddress, username);
+    const enrichedList = await Promise.all(persisted.map((p) => this.enrichPool(p)));
+
+    const withMetrics = enrichedList.map((enriched) => {
+      const p = persisted.find((x) => x.id === enriched.id)!;
+      const pr = this.outstandingPrincipalNominalFromPoolEntity(p);
+      const c = this.couponNominalForPoolEntity(p);
+      const { repaid } = this.sumBorrowerPoolChildAmounts(p);
+      return {
+        ...enriched,
+        debtOwedPrincipalNominal: pr,
+        couponAmountNominal: c,
+        principalRepaidNominal: Number(repaid) / 1e6,
+      };
+    });
+
     const whereConditions: any[] = [];
     if (addr) whereConditions.push({ indexed: false, borrowerIdentifier: addr });
     if (uname) whereConditions.push({ indexed: false, borrowerIdentifier: uname });
 
-    const drafts = whereConditions.length > 0
-      ? await this.poolDrafts.find({ where: whereConditions, order: { createdAt: 'DESC' } })
-      : [];
+    const drafts =
+      whereConditions.length > 0
+        ? await this.poolDrafts.find({ where: whereConditions, order: { createdAt: 'DESC' } })
+        : [];
 
-    const pendingPools = drafts.map((d) => this.mapDraftToPoolEntity(d));
+    const pendingPools = drafts.map((d) => ({
+      ...this.mapDraftToPoolEntity(d),
+      fundManagerAddress: '',
+      debtOwedPrincipalNominal: 0,
+      couponAmountNominal: 0,
+      principalRepaidNominal: 0,
+    }));
 
-    return [...pendingPools, ...enrichedPools];
+    return [...pendingPools, ...withMetrics];
   }
 
   async getBorrowerWallets(borrowerIdentifier: string) {
@@ -514,9 +611,23 @@ export class PoolsService {
   }
 
   async setBorrowerWallet(borrowerIdentifier: string, tokenAddress: string, walletAddress: string) {
-    const wallet = this.borrowerWallets.create({ borrowerIdentifier, tokenAddress, walletAddress });
-    await this.borrowerWallets.save(wallet);
-    return wallet;
+    const idNorm = borrowerIdentifier.trim().toLowerCase();
+    const tokenNorm = tokenAddress.trim();
+    const addrNorm = walletAddress.trim();
+    const existing = await this.borrowerWallets.findOne({
+      where: { borrowerIdentifier: idNorm, tokenAddress: tokenNorm },
+    });
+    if (existing) {
+      existing.walletAddress = addrNorm;
+      return this.borrowerWallets.save(existing);
+    }
+    return this.borrowerWallets.save(
+      this.borrowerWallets.create({
+        borrowerIdentifier: idNorm,
+        tokenAddress: tokenNorm,
+        walletAddress: addrNorm,
+      }),
+    );
   }
 
   async updateBorrowerWallet(walletId: string, walletAddress: string) {

@@ -1,6 +1,6 @@
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { StatusBadge } from '@/components/StatusBadge';
-import { useBorrowerPoolsList } from '@/hooks/useBorrowerPools';
+import { useBorrowerMyPools } from '@/hooks/useBorrowerMyPools';
 import { useCreatePool } from '@/hooks/useCreatePool';
 import { useWallet } from '@/contexts/WalletContext';
 import { useQuery } from '@tanstack/react-query';
@@ -39,7 +39,6 @@ export default function BorrowerPools() {
 
   // Repay Modal State
   const [selectedRepayPool, setSelectedRepayPool] = useState<Pool | null>(null);
-  console.log('selectedRepayPool', selectedRepayPool);
 
   const { data: tokens = [] } = useQuery({
     queryKey: ['constants', 'tokens'],
@@ -49,14 +48,14 @@ export default function BorrowerPools() {
     },
   });
 
-  const { data: pools = [], isLoading, refetch } = useBorrowerPoolsList();
+  const { data: myPoolRows = [], isLoading, refetch } = useBorrowerMyPools();
   const { role } = useWallet();
   const createPool = useCreatePool();
   const { isConnected: isWeb3Connected } = useAccount();
   const { openConnectModal } = useConnectModal();
 
   // Backend returns only the logged-in borrower's pools — no client-side wallet filter needed
-  const borrowerPools = pools;
+  const borrowerPools = myPoolRows;
 
   const handleCreate = async () => {
     if (!isApiConfigured()) {
@@ -127,17 +126,11 @@ export default function BorrowerPools() {
 
         <div className="space-y-3">
           {borrowerPools.length > 0 ? (
-            borrowerPools.map((pool) => {
+            borrowerPools.map((row) => {
+              const { pool, debtOwedPrincipalNominal, couponAmountNominal, principalRepaidNominal } = row;
               const isExpanded = expandedPoolId === pool.id;
-              console.log("🚀 ~ BorrowerPools ~ isExpanded:", isExpanded)
-              const principal = Math.max(0, pool.totalFunded - pool.totalRepaid);
-              console.log("🚀 ~ BorrowerPools ~ principal:", principal)
-              const coupon = principal * pool.apy / 2;
-              console.log("🚀 ~ BorrowerPools ~ coupon:", coupon)
-              const outstanding = principal + coupon;
-              console.log("🚀 ~ BorrowerPools ~ outstanding:", outstanding)
               const nominalPoolSize = Number(pool.poolSize) / 1e6;
-              console.log("🚀 ~ BorrowerPools ~ nominalPoolSize:", nominalPoolSize)
+              const hasDebtToRepay = debtOwedPrincipalNominal + couponAmountNominal > 0;
 
               return (
                 <div key={pool.id} className="glass-card rounded-2xl overflow-hidden border border-border/40 transition-all hover:border-primary/20">
@@ -156,11 +149,21 @@ export default function BorrowerPools() {
                     <div className="flex flex-wrap items-center gap-8 flex-1 justify-center sm:justify-start font-mono text-sm font-bold text-center sm:text-left">
                       <div className="min-w-[100px]">
                         <p className="text-[10px] text-muted-foreground uppercase font-black tracking-tighter mb-1">Debt Owed</p>
-                        <p className="text-foreground">${outstanding.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                        <p className="text-foreground">
+                          ${debtOwedPrincipalNominal.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </p>
                       </div>
                       <div className="min-w-[80px]">
                         <p className="text-[10px] text-muted-foreground uppercase font-black tracking-tighter mb-1">Coupon</p>
-                        <p className="text-primary/70">${coupon.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                        <p className="text-primary/70">
+                          ${couponAmountNominal.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <div className="min-w-[100px]">
+                        <p className="text-[10px] text-muted-foreground uppercase font-black tracking-tighter mb-1">Principal Repaid</p>
+                        <p className="text-success">
+                          ${principalRepaidNominal.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </p>
                       </div>
                       <div className="min-w-[60px]">
                         <p className="text-[10px] text-muted-foreground uppercase font-black tracking-tighter mb-1">APY</p>
@@ -195,7 +198,7 @@ export default function BorrowerPools() {
                           ? 'bg-secondary text-muted-foreground border border-border/50'
                           : 'gradient-primary glow-primary'
                           }`}
-                      // disabled={outstanding <= 0}
+                        disabled={isWeb3Connected && !hasDebtToRepay}
                       >
                         {!isWeb3Connected ? (
                           <><Wallet className="w-3 h-3 mr-1.5" />Connect to Repay</>
@@ -214,7 +217,9 @@ export default function BorrowerPools() {
                         </div>
                         <div className="space-y-1">
                           <p className="text-[10px] text-muted-foreground uppercase font-black">Principal Repaid</p>
-                          <p className="text-xs font-bold text-success">${pool.totalRepaid.toLocaleString()}</p>
+                          <p className="text-xs font-bold text-success">
+                            ${principalRepaidNominal.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          </p>
                         </div>
                         <div className="space-y-1">
                           <p className="text-[10px] text-muted-foreground uppercase font-black">Contract Address</p>

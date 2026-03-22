@@ -1,0 +1,23 @@
+For borrwer dashboard,
+
+calculation of 
+1. outstanding principal will be the addition of all the borrower configured pool's fundsDeployed - addition of all the borrower configured pool's fundsRepaid. ( here consider all the master and child pools of borrower )
+2. outstanding coupon will be then calculated based on the outstanding principal
+3. totoal debt will be then calculated based on the outstanding principal.
+
+a. in my active pools section,
+1. total outstanding will be calculated by the addition of fundsDeployed all child pools of the borrower fror that spciefic master pool id -  addition of fundsRepaid all child pools of the borrower fror that spciefic master pool id
+2. total funded in the dropdown section will be calcuated as the addition of fundsDeployed all child pools of the borrower fror that spciefic master pool id
+3. total repaid in the dropdown section will be calcuated as the addition of fundsRepaid all child pools of the borrower fror that spciefic master pool id
+4. dedictaed wallets addresses must be stored only for that borrower and for that token address. and it should be considered only for the pools that are created by that borrower.
+
+b. in my pools page,
+1. Debt owed will be calculated same as outstanding principal in the master pools section.
+2. COupon amount will be calculated same as outstanding coupon in the master pools section.
+3. Principal repaid will be calculated same as totalRepaid in the mmy active pools section.
+
+
+Create a seperate function for fetching each data of the borrower dashboard, no two sections should use same function.
+One should not conflict with the other.
+
+Create a plan to implement this in the backend and display it to the frontend, with correct values. and wait for my approval

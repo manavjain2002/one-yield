@@ -19,7 +19,9 @@ export function useBorrowerActions() {
     },
     onSuccess: () => {
       toast.success('Repayment transaction initiated');
-      queryClient.invalidateQueries({ queryKey: ['borrower', 'pools'] });
+      queryClient.invalidateQueries({ queryKey: ['borrower', 'dashboard-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['borrower', 'dashboard-active-pools'] });
+      queryClient.invalidateQueries({ queryKey: ['borrower', 'my-pools'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
     },
     onError: (err) => {

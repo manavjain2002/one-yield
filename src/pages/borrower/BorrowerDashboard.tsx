@@ -1,7 +1,8 @@
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { MetricCard } from '@/components/MetricCard';
 import { StatusBadge } from '@/components/StatusBadge';
-import { useBorrowerPoolsList } from '@/hooks/useBorrowerPools';
+import { useBorrowerDashboardSummary } from '@/hooks/useBorrowerDashboardSummary';
+import { useBorrowerDashboardActivePools } from '@/hooks/useBorrowerDashboardActivePools';
 import { TransactionList } from '@/components/TransactionList';
 import { useTransactionHistory } from '@/hooks/useTransactionHistory';
 import { DedicatedWalletsConfig } from './DedicatedWalletsConfig';
@@ -27,13 +28,9 @@ import { useCreatePool } from '@/hooks/useCreatePool';
 import { useWallet } from '@/contexts/WalletContext';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import {
-  estimatedCouponNominalFromPrincipal,
-  outstandingPrincipalNominalFromBorrowerPoolRows,
-} from '@/lib/borrower-dashboard-borrower-pools-debt';
-
 export default function BorrowerDashboard() {
-  const { data: pools = [] } = useBorrowerPoolsList();
+  const { data: summary } = useBorrowerDashboardSummary();
+  const { data: activePoolRows = [] } = useBorrowerDashboardActivePools();
   const { data: txData, isLoading: isLoadingTxs } = useTransactionHistory(1, 5);
   const [selectedRepayPool, setSelectedRepayPool] = useState<Pool | null>(null);
   const [expandedPoolId, setExpandedPoolId] = useState<string | null>(null);
@@ -56,11 +53,13 @@ export default function BorrowerDashboard() {
     },
   });
 
+  const aumPoolIds = activePoolRows.map((r) => r.pool.id).join(',');
   const { data: aumMap = {} } = useQuery({
-    queryKey: ['borrower-pool-aum', pools.map((p) => p.contractAddress).join(',')],
+    queryKey: ['borrower-pool-aum', aumPoolIds],
     queryFn: async () => {
       const result: Record<string, bigint> = {};
-      for (const p of pools) {
+      for (const r of activePoolRows) {
+        const p = r.pool;
         if (!p.contractAddress || p.contractAddress === p.id) continue;
         try {
           const contract = getLendingPoolRead(p.contractAddress);
@@ -71,7 +70,7 @@ export default function BorrowerDashboard() {
       }
       return result;
     },
-    enabled: pools.length > 0,
+    enabled: activePoolRows.length > 0,
     refetchInterval: 30000,
   });
 
@@ -95,31 +94,21 @@ export default function BorrowerDashboard() {
     } catch {}
   };
 
-  const activePools = pools.filter(p => p.status === 'active' || p.status === 'pending');
   const poolTokenLabel = (p: Pool) => p.poolTokenName || 'USDC';
+  const poolsForLabel = activePoolRows.map((r) => r.pool);
   const summaryTokenLabel =
-    activePools.length === 0
+    poolsForLabel.length === 0
       ? 'USDC'
-      : [...new Set(activePools.map(poolTokenLabel))].length === 1
-        ? poolTokenLabel(activePools[0])
+      : [...new Set(poolsForLabel.map(poolTokenLabel))].length === 1
+        ? poolTokenLabel(poolsForLabel[0])
         : 'USDC';
-  const fmtTok = (n: number) => `${Math.round(n).toLocaleString()} ${summaryTokenLabel}`;
+  const fmtTok = (n: number) =>
+    `${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${summaryTokenLabel}`;
 
-  const poolsForDebtMetrics = activePools;
-  const totalPrincipal = poolsForDebtMetrics.reduce(
-    (s, p) => s + outstandingPrincipalNominalFromBorrowerPoolRows(p.borrowerPools),
-    0,
-  );
-  const totalCoupon = poolsForDebtMetrics.reduce(
-    (s, p) =>
-      s +
-      estimatedCouponNominalFromPrincipal(
-        outstandingPrincipalNominalFromBorrowerPoolRows(p.borrowerPools),
-        p.apy,
-      ),
-    0,
-  );
-  const totalOutstanding = totalPrincipal + totalCoupon;
+  const totalPrincipal = summary?.outstandingPrincipalNominal ?? 0;
+  const totalCoupon = summary?.outstandingCouponNominal ?? 0;
+  const totalOutstanding = summary?.totalDebtNominal ?? 0;
+  const activePoolCount = summary?.activePoolCount ?? 0;
 
   return (
     <DashboardLayout>
@@ -136,7 +125,7 @@ export default function BorrowerDashboard() {
             <TooltipTrigger asChild>
               <div><MetricCard title="Outstanding Principal" value={fmtTok(totalPrincipal)} icon={<DollarSign className="h-5 w-5" />} /></div>
             </TooltipTrigger>
-            <TooltipContent><p className="max-w-xs text-xs">Total pool token amount borrowed minus repaid across active pools ({summaryTokenLabel})</p></TooltipContent>
+            <TooltipContent><p className="max-w-xs text-xs">Total pool token borrowed minus repaid across all your pools (child allocations), in {summaryTokenLabel}</p></TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -152,7 +141,7 @@ export default function BorrowerDashboard() {
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div><MetricCard title="Active Pools" value={String(activePools.length)} icon={<BarChart3 className="h-5 w-5" />} /></div>
+              <div><MetricCard title="Active Pools" value={String(activePoolCount)} icon={<BarChart3 className="h-5 w-5" />} /></div>
             </TooltipTrigger>
             <TooltipContent><p className="max-w-xs text-xs">Number of pools with outstanding debt positions</p></TooltipContent>
           </Tooltip>
@@ -167,11 +156,10 @@ export default function BorrowerDashboard() {
           </div>
 
           <div className="space-y-3">
-            {activePools.length > 0 ? activePools.map((pool) => {
+            {activePoolRows.length > 0 ? activePoolRows.map((row) => {
+              const { pool, totalOutstandingNominal, totalDeployedNominal, totalRepaidNominal } = row;
               const isExpanded = expandedPoolId === pool.id;
-              const principal = outstandingPrincipalNominalFromBorrowerPoolRows(pool.borrowerPools);
-              const coupon = estimatedCouponNominalFromPrincipal(principal, pool.apy);
-              const outstanding = principal + coupon;
+              const outstanding = totalOutstandingNominal;
               const poolAum = aumMap[pool.id] ?? 0n;
               const hasAum = poolAum > 0n;
               const nominalPoolSize = Number(pool.poolSize) / 1e6;
@@ -245,11 +233,15 @@ export default function BorrowerDashboard() {
                         </div>
                         <div className="space-y-1">
                           <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Total Funded</p>
-                          <p className="text-sm font-bold">{pool.totalFunded.toLocaleString()} {tok}</p>
+                          <p className="text-sm font-bold">
+                            {totalDeployedNominal.toLocaleString(undefined, { maximumFractionDigits: 2 })} {tok}
+                          </p>
                         </div>
                         <div className="space-y-1">
                           <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Total Repaid</p>
-                          <p className="text-sm font-bold text-success">{pool.totalRepaid.toLocaleString()} {tok}</p>
+                          <p className="text-sm font-bold text-success">
+                            {totalRepaidNominal.toLocaleString(undefined, { maximumFractionDigits: 2 })} {tok}
+                          </p>
                         </div>
                         <div className="space-y-1">
                           <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Pool Size</p>
@@ -280,7 +272,7 @@ export default function BorrowerDashboard() {
               <div className="py-16 text-center glass-card rounded-2xl border-dashed border-border/50 space-y-4">
                 <Clock className="h-8 w-8 mx-auto opacity-30" />
                 <p className="text-muted-foreground">
-                  {pools.length > 0
+                  {activePoolCount === 0 && (summary?.outstandingPrincipalNominal ?? 0) > 0
                     ? 'No active or pending pools. View all pools for paused or closed positions.'
                     : 'No active pools found.'}
                 </p>

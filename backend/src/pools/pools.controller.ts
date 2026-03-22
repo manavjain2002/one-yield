@@ -318,11 +318,25 @@ export class PoolsController {
 export class BorrowerRoutesController {
   constructor(private readonly pools: PoolsService) { }
 
+  @Get('dashboard/summary')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('borrower')
+  borrowerDashboardSummary(@CurrentUser() user: JwtUser) {
+    return this.pools.getBorrowerDashboardSummary(user.walletAddress, user.username);
+  }
+
+  @Get('dashboard/active-pools')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('borrower')
+  borrowerDashboardActivePools(@CurrentUser() user: JwtUser) {
+    return this.pools.getBorrowerDashboardActivePools(user.walletAddress, user.username);
+  }
+
   @Get('pools')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('borrower')
   myPools(@CurrentUser() user: JwtUser) {
-    return this.pools.borrowerPoolsFor(user.walletAddress, user.username);
+    return this.pools.getBorrowerMyPoolsPage(user.walletAddress, user.username);
   }
 
   @Get('wallets')

@@ -158,7 +158,9 @@ export function useAdminPoolActions() {
       void queryClient.invalidateQueries({ queryKey: ['admin', 'pool-drafts'] });
       void queryClient.invalidateQueries({ queryKey: ['manager-summary'] });
       void queryClient.invalidateQueries({ queryKey: ['pools'] });
-      void queryClient.invalidateQueries({ queryKey: ['borrower', 'pools'] });
+      void queryClient.invalidateQueries({ queryKey: ['borrower', 'dashboard-summary'] });
+      void queryClient.invalidateQueries({ queryKey: ['borrower', 'dashboard-active-pools'] });
+      void queryClient.invalidateQueries({ queryKey: ['borrower', 'my-pools'] });
     },
   });
 

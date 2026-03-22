@@ -129,7 +129,9 @@ export function useBorrowerWeb3Actions({ poolTokenAddress, fundManagerAddress, p
       }
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['borrower', 'pools'] });
+      void queryClient.invalidateQueries({ queryKey: ['borrower', 'dashboard-summary'] });
+      void queryClient.invalidateQueries({ queryKey: ['borrower', 'dashboard-active-pools'] });
+      void queryClient.invalidateQueries({ queryKey: ['borrower', 'my-pools'] });
       void queryClient.invalidateQueries({ queryKey: ['pools'] });
       void allowanceQuery.refetch();
     },
