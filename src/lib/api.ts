@@ -12,6 +12,7 @@ function normalizeApiBase(url: string): string {
 }
 
 const baseURL = normalizeApiBase(import.meta.env.VITE_API_URL ?? '');
+console.log('baseURL', baseURL);
 
 export const api = axios.create({
   baseURL: baseURL || undefined,
