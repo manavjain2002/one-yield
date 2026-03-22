@@ -84,8 +84,8 @@ export default function BorrowerDashboard() {
         : 'USDC';
   const fmtTok = (n: number) => `${Math.round(n).toLocaleString()} ${summaryTokenLabel}`;
 
-  const totalPrincipal = pools.reduce((s, p) => s + Math.max(0, p.totalReceived - p.totalRepaid), 0);
-  const totalCoupon = pools.reduce((s, p) => { const pr = Math.max(0, p.totalReceived - p.totalRepaid); return s + pr * p.apy / 200; }, 0);
+  const totalPrincipal = pools.reduce((s, p) => s + Math.max(0, p.totalFunded - p.totalRepaid), 0);
+  const totalCoupon = pools.reduce((s, p) => { const pr = Math.max(0, p.totalFunded - p.totalRepaid); return s + pr * p.apy / 200; }, 0);
   const totalOutstanding = totalPrincipal + totalCoupon;
 
   const { data: aumMap = {} } = useQuery({
@@ -153,7 +153,7 @@ export default function BorrowerDashboard() {
           <div className="space-y-3">
             {pools.length > 0 ? pools.map(pool => {
               const isExpanded = expandedPoolId === pool.id;
-              const principal = Math.max(0, pool.totalReceived - pool.totalRepaid);
+              const principal = Math.max(0, pool.totalFunded - pool.totalRepaid);
               const coupon = principal * pool.apy / 200;
               const outstanding = principal + coupon;
               const poolAum = aumMap[pool.id] ?? 0n;
@@ -226,7 +226,7 @@ export default function BorrowerDashboard() {
                         </div>
                         <div className="space-y-1">
                           <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Total Funded</p>
-                          <p className="text-sm font-bold">{pool.totalReceived.toLocaleString()} {tok}</p>
+                          <p className="text-sm font-bold">{pool.totalFunded.toLocaleString()} {tok}</p>
                         </div>
                         <div className="space-y-1">
                           <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Total Repaid</p>

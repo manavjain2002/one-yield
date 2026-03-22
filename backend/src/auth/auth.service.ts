@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -165,6 +166,18 @@ export class AuthService implements OnModuleInit {
     });
     if (!user) {
       throw new NotFoundException(`User with ID ${userId} not found`);
+    }
+
+    if (user.username) {
+      throw new ForbiddenException(
+        'Role cannot be changed through this endpoint for password-based accounts',
+      );
+    }
+    if (!user.walletAddress) {
+      throw new ForbiddenException('This account cannot use wallet role selection');
+    }
+    if (role !== 'lender' && role !== 'manager') {
+      throw new BadRequestException('Only lender or manager roles are allowed here');
     }
 
     user.role = role;

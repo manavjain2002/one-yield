@@ -1,6 +1,13 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { api, setAuthToken, loadStoredToken, isApiConfigured, getErrorMessage } from '@/lib/api';
+import {
+  api,
+  setAuthToken,
+  loadStoredToken,
+  isApiConfigured,
+  getErrorMessage,
+  AUTH_TOKEN_REFRESHED_EVENT,
+} from '@/lib/api';
 import { useAccount, useDisconnect, useBalance, useSignMessage, useChainId, useSwitchChain } from 'wagmi';
 import { wagmiTargetChain } from '@/lib/wagmi-target-chain';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
@@ -21,12 +28,20 @@ interface WalletState {
   needsReAuth: boolean;
   /** From JWT: first-time Web3 signup must pick Lender vs Pool Manager before using the app. */
   needsRoleSelection: boolean;
+  /**
+   * After credential logout while wallet stays connected: do not auto-run Web3 verify
+   * or show the "Verifying identity" full-screen gate on the landing page.
+   */
+  blockWeb3AutoVerify: boolean;
 }
 
 interface WalletContextType extends WalletState {
   /** True after the first sync from localStorage (avoid ProtectedRoute redirect before JWT hydrate). */
   authHydrated: boolean;
   connect: () => Promise<void>;
+  /** Clears JWT and app session; keeps browser wallet connected (borrower/admin logout). */
+  logoutSession: () => void;
+  /** Clears session and disconnects the browser wallet (lender/manager / full reset). */
   disconnect: () => void;
   selectRole: (role: UserRole) => Promise<void>;
   loginUser: (
@@ -79,6 +94,20 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   const [authHydrated, setAuthHydrated] = useState(false);
 
+  const emptyWalletState = (): WalletState => ({
+    isConnected: false,
+    address: null,
+    username: null,
+    role: null,
+    balance: 0,
+    network: import.meta.env.VITE_NETWORK === 'mainnet' ? 'mainnet' : 'testnet',
+    accessToken: null,
+    walletType: null,
+    needsReAuth: false,
+    needsRoleSelection: false,
+    blockWeb3AutoVerify: false,
+  });
+
   const [state, setState] = useState<WalletState>({
     isConnected: false,
     address: null,
@@ -90,7 +119,27 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     walletType: null,
     needsReAuth: false,
     needsRoleSelection: false,
+    blockWeb3AutoVerify: false,
   });
+
+  const applyTokenFromStorage = useCallback((accessToken: string) => {
+    const payload = decodeJwtPayload(accessToken);
+    if (!payload) return;
+    setAuthToken(accessToken);
+    setState((prev) => ({
+      ...prev,
+      accessToken,
+      address:
+        payload.walletAddress != null && payload.walletAddress !== ''
+          ? payload.walletAddress
+          : prev.address,
+      username: payload.username != null ? payload.username : prev.username,
+      role: payload.role ?? prev.role,
+      isConnected: true,
+      needsRoleSelection: payload.needsRoleSelection === true,
+      blockWeb3AutoVerify: false,
+    }));
+  }, []);
 
   // Load stored token on mount
   useEffect(() => {
@@ -107,6 +156,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           role: payload.role || null,
           isConnected: true,
           needsRoleSelection: payload.needsRoleSelection === true,
+          blockWeb3AutoVerify: false,
         }));
       } else {
         setAuthToken(null);
@@ -115,52 +165,50 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setAuthHydrated(true);
   }, []);
 
-  // Sync state with wagmi
+  const disconnect = useCallback(() => {
+    setAuthToken(null);
+    try {
+      wagmiDisconnect();
+    } catch (e) {
+      console.warn('[WalletContext] Web3 disconnect warning:', e);
+    }
+    setState(emptyWalletState());
+  }, [wagmiDisconnect]);
+
+  const logoutSession = useCallback(() => {
+    setAuthToken(null);
+    setState((prev) => ({
+      ...emptyWalletState(),
+      isConnected: Boolean(wagmiIsConnected && wagmiAddress),
+      address: wagmiAddress ?? null,
+      balance: balanceData != null ? Number(balanceData.formatted) : 0,
+      network: prev.network,
+      blockWeb3AutoVerify: true,
+    }));
+  }, [wagmiIsConnected, wagmiAddress, balanceData]);
+
+  // Sync state with wagmi (balance + address when connected)
   useEffect(() => {
     if (wagmiIsConnected && wagmiAddress) {
-      setState(prev => ({
+      setState((prev) => ({
         ...prev,
         isConnected: true,
         address: wagmiAddress,
         balance: balanceData ? Number(balanceData.formatted) : prev.balance,
       }));
-    } else if (!wagmiIsConnected && state.address) {
-      // ONLY disconnect if the role strictly requires a wallet (Lender/Manager)
-      // Borrowers and Admins using ID/Pass should NOT be disconnected by wagmi
-      if (state.role === 'lender' || state.role === 'manager') {
-        if (!state.username && !state.accessToken) { // If it's a pure Web3 user with no stored token
-          console.log('[WalletContext] Web3 disconnected - logging out');
-          disconnect();
-        }
-      }
+    } else if (
+      !wagmiIsConnected &&
+      state.accessToken &&
+      (state.role === 'lender' || state.role === 'manager') &&
+      !state.username
+    ) {
+      console.log('[WalletContext] Web3 disconnected - logging out wallet session');
+      disconnect();
     }
-  }, [wagmiIsConnected, wagmiAddress, balanceData]);
-
-  const disconnect = useCallback(() => {
-    setAuthToken(null);
-    
-    // Always attempt to disconnect the Web3 wallet to ensure the modal/session is cleared
-    try { 
-      wagmiDisconnect(); 
-    } catch (e) { 
-      console.warn('[WalletContext] Web3 disconnect warning:', e); 
-    }
-
-    setState({
-      isConnected: false,
-      address: null,
-      username: null,
-      role: null,
-      balance: 0,
-      network: import.meta.env.VITE_NETWORK === 'mainnet' ? 'mainnet' : 'testnet',
-      accessToken: null,
-      walletType: null,
-      needsReAuth: false,
-      needsRoleSelection: false,
-    });
-  }, [wagmiDisconnect]);
+  }, [wagmiIsConnected, wagmiAddress, balanceData, state.accessToken, state.role, state.username, disconnect]);
 
   const connect = useCallback(async () => {
+    setState((prev) => ({ ...prev, blockWeb3AutoVerify: false }));
     const useMock = import.meta.env.VITE_USE_MOCK_WALLET === 'true' || !isApiConfigured();
 
     if (useMock) {
@@ -170,6 +218,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         address: '0x0000000000000000000000000000000000000001',
         walletType: 'metamask',
         balance: 12450.75,
+        blockWeb3AutoVerify: false,
       }));
       toast.success('Connected (mock wallet)');
       return;
@@ -235,6 +284,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           role: auth.role,
           needsReAuth: false,
           needsRoleSelection: decoded?.needsRoleSelection === true,
+          blockWeb3AutoVerify: false,
         }));
         
         toast.success('Web3 identity verified');
@@ -248,15 +298,37 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, [chainId, switchChainAsync, signMessageAsync, disconnect]);
 
+  // Silent JWT refresh keeps localStorage in sync with React auth state
+  useEffect(() => {
+    const onTokenRefreshed = (e: Event) => {
+      const t = (e as CustomEvent<{ accessToken: string }>).detail?.accessToken;
+      if (typeof t === 'string' && t.length > 0) {
+        applyTokenFromStorage(t);
+      }
+    };
+    window.addEventListener(AUTH_TOKEN_REFRESHED_EVENT, onTokenRefreshed);
+    return () => window.removeEventListener(AUTH_TOKEN_REFRESHED_EVENT, onTokenRefreshed);
+  }, [applyTokenFromStorage]);
+
+  // Web3-only session: active wallet must match JWT identity
+  useEffect(() => {
+    if (!state.accessToken || state.username) return;
+    const p = decodeJwtPayload(state.accessToken);
+    if (!p?.walletAddress || !wagmiAddress) return;
+    if (wagmiAddress.toLowerCase() !== p.walletAddress.toLowerCase()) {
+      toast.error('Wallet account changed. Please sign in again with this wallet.');
+      disconnect();
+    }
+  }, [state.accessToken, state.username, wagmiAddress, disconnect]);
+
   // Auth verification effect when address changes
   useEffect(() => {
     const verifyWallet = async () => {
-      if (wagmiAddress && !state.accessToken) {
-        await loginWeb3(wagmiAddress);
-      }
+      if (!wagmiAddress || state.accessToken || state.blockWeb3AutoVerify) return;
+      await loginWeb3(wagmiAddress);
     };
     void verifyWallet();
-  }, [wagmiAddress, state.accessToken, loginWeb3]);
+  }, [wagmiAddress, state.accessToken, state.blockWeb3AutoVerify, loginWeb3]);
 
   const loginUser = useCallback(async (username: string, passwordPlain: string) => {
     try {
@@ -277,6 +349,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         role: data.role,
         needsReAuth: false,
         needsRoleSelection: false,
+        blockWeb3AutoVerify: false,
       }));
       toast.success('Logged in successfully');
       return data;
@@ -318,6 +391,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         role: data.role,
         needsReAuth: false,
         needsRoleSelection: false,
+        blockWeb3AutoVerify: false,
       }));
       toast.success('Registered successfully');
       return data;
@@ -341,6 +415,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           role: data.role,
           accessToken: data.accessToken,
           needsRoleSelection: false,
+          blockWeb3AutoVerify: false,
         }));
       } catch (e) {
         toast.error(getErrorMessage(e));
@@ -369,6 +444,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         ...state,
         authHydrated,
         connect,
+        logoutSession,
         disconnect,
         selectRole,
         loginUser,

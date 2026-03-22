@@ -41,18 +41,16 @@ function num(s: string | undefined): number {
 /** Map backend pool to UI `Pool` shape (amounts in same nominal units as mock for display). */
 export function mapApiPoolToUi(p: ApiPool): Pool {
   const requested = num(p.poolSize) / 1e6;
-  const received = num(p.totalDeployed) / 1e6;
   const deposited = num(p.totalDeposited) / 1e6;
   const withdrawn = num(p.totalWithdrawn) / 1e6;
   const deployed = num(p.totalDeployed) / 1e6;
   const repaid = num(p.totalRepaid) / 1e6;
 
-  
   const borrowerPools = p.borrowerPools ?? [];
   const allocations = borrowerPools.map((b) => ({
     wallet: b.dedicatedWalletAddress,
     percentage: b.allocationBps / 100,
-    fundsAssigned: received * (b.allocationBps / 10_000),
+    fundsAssigned: deployed * (b.allocationBps / 10_000),
   }));
 
   const statusMap: Record<string, Pool['status']> = {
@@ -70,7 +68,7 @@ export function mapApiPoolToUi(p: ApiPool): Pool {
     symbol: p.symbol,
     borrowerAddress: p.borrowerAddress || '',
     totalRequested: requested || 1,
-    totalReceived: received,
+    totalReceived: deposited,
     totalWithdrawn: withdrawn,
     totalFunded: deployed,
     totalRepaid: repaid,

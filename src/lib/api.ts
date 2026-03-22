@@ -7,6 +7,9 @@ import {
 
 const baseURL = resolvedApiBase();
 
+/** Dispatched after silent refresh so WalletContext can re-decode JWT (role, needsRoleSelection, etc.). */
+export const AUTH_TOKEN_REFRESHED_EVENT = 'oneyield_token_refreshed';
+
 export const api = axios.create({
   baseURL: baseURL || undefined,
   headers: { 'Content-Type': 'application/json' },
@@ -120,6 +123,9 @@ api.interceptors.response.use(
           }
           const accessToken = await refreshPromise;
           setAuthToken(accessToken);
+          window.dispatchEvent(
+            new CustomEvent(AUTH_TOKEN_REFRESHED_EVENT, { detail: { accessToken } }),
+          );
           if (originalRequest.headers) {
             originalRequest.headers.Authorization = `Bearer ${accessToken}`;
           }

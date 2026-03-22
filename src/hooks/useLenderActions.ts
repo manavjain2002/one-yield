@@ -12,6 +12,13 @@ export function useLenderActions(pool: Pool | null) {
 
   const { address } = useWallet();
 
+  const invalidatePoolDashboardQueries = () => {
+    void queryClient.invalidateQueries({ queryKey: ['pools'] });
+    void queryClient.invalidateQueries({ queryKey: ['manager-summary'] });
+    void queryClient.invalidateQueries({ queryKey: ['pool-balances'] });
+    void queryClient.invalidateQueries({ queryKey: ['pool-onchain'] });
+  };
+
   // Check Allowance
   const allowanceQuery = useQuery({
     queryKey: ['allowance', pool?.contractAddress, pool?.poolTokenAddress, address],
@@ -119,7 +126,7 @@ export function useLenderActions(pool: Pool | null) {
       }
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['pools'] });
+      invalidatePoolDashboardQueries();
       void queryClient.invalidateQueries({ queryKey: ['lender-positions'] });
     },
   });
@@ -155,6 +162,7 @@ export function useLenderActions(pool: Pool | null) {
       }
     },
     onSuccess: () => {
+      invalidatePoolDashboardQueries();
       void queryClient.invalidateQueries({ queryKey: ['lender-positions'] });
       void queryClient.invalidateQueries({ queryKey: ['pool-limits'] });
     },
@@ -180,6 +188,7 @@ export function useLenderActions(pool: Pool | null) {
       }
     },
     onSuccess: () => {
+      invalidatePoolDashboardQueries();
       void queryClient.invalidateQueries({ queryKey: ['lender-positions'] });
       void queryClient.invalidateQueries({ queryKey: ['pool-limits'] });
     },

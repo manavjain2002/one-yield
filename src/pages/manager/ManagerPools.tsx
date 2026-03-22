@@ -199,7 +199,7 @@ export default function ManagerPools() {
             </div>
             <div className="space-y-3 text-sm pt-4 border-t border-border/30 mt-auto">
               <div className="flex justify-between"><span className="text-muted-foreground">Target Pool Size</span><span className="font-semibold">${selectedPool.totalRequested.toLocaleString()}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Total Deposited</span><span className="font-semibold">${selectedPool.totalReceived.toLocaleString()}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Total Deposited</span><span className="font-semibold">${(Number(selectedPool.totalDeposited) / 1e6).toLocaleString()}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Pool APY</span><span className="font-semibold text-success">{selectedPool.apy}%</span></div>
             </div>
           </div>

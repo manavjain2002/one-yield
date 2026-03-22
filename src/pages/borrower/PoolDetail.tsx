@@ -50,7 +50,7 @@ export default function PoolDetail() {
   const fillPct = (pool.totalReceived / pool.totalRequested) * 100;
   const allocTotal = pool.allocations.reduce((s, a) => s + a.percentage, 0);
   const pieData = pool.allocations.map(a => ({ name: a.wallet, value: a.percentage }));
-  const outstanding = pool.totalReceived - pool.totalRepaid;
+  const outstanding = pool.totalFunded - pool.totalRepaid;
 
   return (
     <DashboardLayout>

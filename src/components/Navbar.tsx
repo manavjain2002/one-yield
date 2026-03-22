@@ -31,7 +31,7 @@ const roleNavItems = {
 };
 
 export function Navbar() {
-  const { address, username, role, network, balance, disconnect } = useWallet();
+  const { address, username, role, network, balance, disconnect, logoutSession } = useWallet();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -90,7 +90,18 @@ export function Navbar() {
             </div>
 
             <ThemeToggle />
-            <Button variant="ghost" size="icon" onClick={disconnect} className="text-muted-foreground hover:text-destructive">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                if (role === 'borrower' || role === 'admin') {
+                  logoutSession();
+                } else {
+                  disconnect();
+                }
+              }}
+              className="text-muted-foreground hover:text-destructive"
+            >
               <LogOut className="h-4 w-4" />
             </Button>
 

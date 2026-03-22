@@ -130,7 +130,7 @@ export default function BorrowerPools() {
             borrowerPools.map((pool) => {
               const isExpanded = expandedPoolId === pool.id;
               console.log("🚀 ~ BorrowerPools ~ isExpanded:", isExpanded)
-              const principal = Math.max(0, pool.totalReceived - pool.totalRepaid);
+              const principal = Math.max(0, pool.totalFunded - pool.totalRepaid);
               console.log("🚀 ~ BorrowerPools ~ principal:", principal)
               const coupon = principal * pool.apy / 2;
               console.log("🚀 ~ BorrowerPools ~ coupon:", coupon)

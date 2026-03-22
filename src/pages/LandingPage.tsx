@@ -16,10 +16,12 @@ export default function LandingPage() {
     role,
     authHydrated,
     needsRoleSelection,
+    blockWeb3AutoVerify,
     connect,
     loginUser,
     registerUser,
     selectRole,
+    disconnect,
   } = useWallet();
   const [roleSubmitting, setRoleSubmitting] = useState<UserRole | null>(null);
   const [showWeb3Modal, setShowWeb3Modal] = useState(false);
@@ -119,8 +121,8 @@ export default function LandingPage() {
     }
   };
 
-  // 1. If connected via Web3 but no token yet, show verifying state
-  if (isConnected && address && !accessToken) {
+  // 1. If connected via Web3 but no token yet, show verifying state (skip after credential logout + wallet still connected)
+  if (isConnected && address && !accessToken && !blockWeb3AutoVerify) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
         <div className="flex flex-col items-center gap-6 text-center animate-in fade-in duration-700">
@@ -210,12 +212,13 @@ export default function LandingPage() {
       </div>
 
       {/* First-time Web3: choose Lender vs Pool Manager (JWT needsRoleSelection) */}
-      <Dialog open={Boolean(accessToken && needsRoleSelection && isApiConfigured())} onOpenChange={() => {}}>
-        <DialogContent
-          className="glass-card border-border/50 sm:max-w-md"
-          onPointerDownOutside={(e) => e.preventDefault()}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-        >
+      <Dialog
+        open={Boolean(accessToken && needsRoleSelection && isApiConfigured())}
+        onOpenChange={(open) => {
+          if (!open) disconnect();
+        }}
+      >
+        <DialogContent className="glass-card border-border/50 sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-center text-xl">Choose your role</DialogTitle>
           </DialogHeader>

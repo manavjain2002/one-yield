@@ -15,6 +15,7 @@ export function useManagerSummary() {
 
   return useQuery({
     queryKey: ['manager-summary', accessToken],
+    refetchInterval: 45_000,
     queryFn: async () => {
       if (!isApiConfigured() || !accessToken) {
         return {
