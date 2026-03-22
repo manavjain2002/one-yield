@@ -106,8 +106,11 @@ export default function BorrowerDashboard() {
     `${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${summaryTokenLabel}`;
 
   const totalPrincipal = summary?.outstandingPrincipalNominal ?? 0;
+  console.log('totalPrincipal', totalPrincipal);
   const totalCoupon = summary?.outstandingCouponNominal ?? 0;
+  console.log('totalCoupon', totalCoupon);
   const totalOutstanding = summary?.totalDebtNominal ?? 0;
+  console.log('totalOutstanding', totalOutstanding);
   const activePoolCount = summary?.activePoolCount ?? 0;
 
   return (
