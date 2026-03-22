@@ -75,13 +75,17 @@ export default function BorrowerPools() {
         return;
       }
       const apyBasisPoints = Math.round(apyNum * 100);
+      if (!file) {
+        toast.error('Upload Loan Tape is required.');
+        return;
+      }
       await createPool.mutateAsync({
         name: name.trim().toUpperCase(),
         symbol: symbol.trim().toUpperCase(),
         poolSize,
         apyBasisPoints,
         poolTokenAddress: tokenAddress || undefined,
-        file: file || undefined,
+        file,
       });
       toast.success('Pool creation initiated — please wait for confirmation.');
       setShowCreate(false);
@@ -288,21 +292,19 @@ export default function BorrowerPools() {
               </p>
             </div>
             <div className="space-y-2">
-              <Label>Supporting Document (Excel)</Label>
+              <Label>Upload Loan Tape <span className="text-destructive">*</span></Label>
               <Input
                 type="file"
-                accept=".xlsx, .xls, .csv"
+                accept=".xlsx,.xls,.csv"
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
                 className="bg-secondary/50 border-border file:text-primary file:font-medium"
               />
-              <p className="text-xs text-muted-foreground">
-                Optional: Upload pool structure / compliance parameters.
-              </p>
+              <p className="text-xs text-muted-foreground">Required. Accepted: .xlsx, .xls, .csv</p>
             </div>
             <Button
               type="button"
               className="w-full gradient-primary rounded-xl mt-2"
-              disabled={createPool.isPending || !name.trim() || !symbol.trim() || !borrowUsd || !apy}
+              disabled={createPool.isPending || !name.trim() || !symbol.trim() || !borrowUsd || !apy || !file}
               onClick={() => void handleCreate()}
             >
               {createPool.isPending ? 'Submitting…' : 'Create Pool'}

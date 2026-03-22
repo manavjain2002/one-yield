@@ -3,6 +3,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import type { Pool } from '@/data/mockData';
 import { useManagerSummary } from '@/hooks/useManagerSummary';
 import { useManagerActions } from '@/hooks/useManagerActions';
+import { usePoolContractPaused } from '@/hooks/usePoolContractPaused';
 import { usePoolTxHistory } from '@/hooks/useTxHistory';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { HashScanLink } from '@/components/HashScanLink';
 import { AddressLink } from '@/components/AddressLink';
 import { SearchableSelect } from '@/components/ui/searchable-select';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import { getLendingPoolRead, getAssetManagerRead, getERC20Read } from '@/lib/contracts';
@@ -71,14 +72,7 @@ export default function ManagerPools() {
     refetchInterval: 15000,
   });
 
-  const { data: isPaused, refetch: refetchPaused } = useQuery({
-    queryKey: ['pool-paused', selectedPool?.contractAddress],
-    queryFn: async () => {
-      if (!selectedPool?.contractAddress) return false;
-      return await getLendingPoolRead(selectedPool.contractAddress).paused();
-    },
-    enabled: !!selectedPool?.contractAddress,
-  });
+  const { data: isPaused } = usePoolContractPaused(selectedPool?.contractAddress);
 
   const { data: totalAllocationOnChain = 0 } = useQuery({
     queryKey: ['total-allocation', selectedPool?.fundManagerAddress],
@@ -122,21 +116,22 @@ export default function ManagerPools() {
       case 'repayments':
         return txHistory.filter((tx) => ['repay', 'repayment'].includes(t(tx.type)));
       case 'deployments':
+        return txHistory.filter((tx) => ['deploy_funds', 'send_to_reserve'].includes(t(tx.type)));
+      case 'operations':
         return txHistory.filter((tx) =>
-          [
-            'deploy_funds',
-            'send_to_reserve',
-            'create_pool',
-            'activate',
-            'pause',
-            'unpause',
-            'aum_update',
-          ].includes(t(tx.type)),
+          ['create_pool', 'activate', 'pause', 'unpause', 'aum_update'].includes(t(tx.type)),
         );
       default:
         return txHistory;
     }
   };
+
+  const txTabs = ['deposits', 'withdrawals', 'repayments', 'deployments', 'operations'] as const;
+
+  function TxAddressCell({ addr }: { addr?: string | null }) {
+    if (!addr) return <span className="text-muted-foreground">—</span>;
+    return <AddressLink address={addr} />;
+  }
 
 
   const isPoolPending = selectedPool.status === 'pending';
@@ -361,41 +356,85 @@ export default function ManagerPools() {
         </div>
 
         <Tabs defaultValue="deposits" className="space-y-4">
-          <TabsList className="bg-secondary/50 rounded-xl">
+          <TabsList className="bg-secondary/50 rounded-xl flex flex-wrap h-auto gap-1 p-1">
             <TabsTrigger value="deposits" className="rounded-lg">Deposits</TabsTrigger>
             <TabsTrigger value="withdrawals" className="rounded-lg">Withdrawals</TabsTrigger>
             <TabsTrigger value="repayments" className="rounded-lg">Repayments</TabsTrigger>
             <TabsTrigger value="deployments" className="rounded-lg">Deployments</TabsTrigger>
+            <TabsTrigger value="operations" className="rounded-lg">Operations</TabsTrigger>
           </TabsList>
-          {['deposits', 'withdrawals', 'repayments', 'deployments'].map(tab => (
+          {txTabs.map((tab) => (
             <TabsContent key={tab} value={tab}>
+              {tab === 'deployments' && (selectedPool.borrowerPools?.length ?? 0) > 0 && (
+                <div className="rounded-xl border border-border/50 bg-secondary/10 px-4 py-3 mb-3 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Borrower wallets (pool configuration)
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {(selectedPool.borrowerPools ?? []).map((bp) => (
+                      <div
+                        key={bp.dedicatedWalletAddress}
+                        className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs rounded-lg bg-card/90 border border-border/40 px-3 py-2 shadow-sm"
+                      >
+                        <AddressLink address={bp.dedicatedWalletAddress} />
+                        <span className="text-muted-foreground tabular-nums">
+                          {(bp.allocationBps / 100).toFixed(2)}% alloc
+                        </span>
+                        <span className="font-semibold tabular-nums text-foreground">
+                          ${(Number(bp.fundsDeployed || '0') / 1e6).toLocaleString()} deployed
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="glass-card rounded-2xl overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border/50">
-                      <th className="px-4 py-3 text-left font-medium text-muted-foreground">Type</th>
-                      <th className="px-4 py-3 text-left font-medium text-muted-foreground">Amount</th>
-                      <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
-                      <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden sm:table-cell">Tx Hash</th>
-                      <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/10">
-                    {getFilteredHistory(tab).length > 0 ? (
-                      getFilteredHistory(tab).map(tx => (
-                        <tr key={tx.id} className="hover:bg-secondary/5 transition-colors">
-                          <td className="px-4 py-3 capitalize font-semibold">{tx.type}</td>
-                          <td className="px-4 py-3 font-semibold">${tx.amount.toLocaleString()}</td>
-                          <td className="px-4 py-3 text-muted-foreground">{new Date(tx.timestamp).toLocaleDateString()}</td>
-                          <td className="px-4 py-3 hidden sm:table-cell"><HashScanLink txHash={tx.txHash} /></td>
-                          <td className="px-4 py-3"><StatusBadge status={tx.status} /></td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[640px]">
+                    <thead>
+                      <tr className="border-b border-border/50">
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">Type</th>
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">Amount</th>
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">From</th>
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">To</th>
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden sm:table-cell">Tx Hash</th>
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/10">
+                      {getFilteredHistory(tab).length > 0 ? (
+                        getFilteredHistory(tab).map((tx) => (
+                          <tr key={tx.id} className="hover:bg-secondary/5 transition-colors">
+                            <td className="px-4 py-3 capitalize font-semibold">{tx.type}</td>
+                            <td className="px-4 py-3 font-semibold">${tx.amount.toLocaleString()}</td>
+                            <td className="px-4 py-3 hidden md:table-cell max-w-[140px] truncate">
+                              <TxAddressCell addr={tx.fromAddress} />
+                            </td>
+                            <td className="px-4 py-3 hidden md:table-cell max-w-[140px] truncate">
+                              <TxAddressCell addr={tx.toAddress} />
+                            </td>
+                            <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                              {new Date(tx.timestamp).toLocaleDateString()}
+                            </td>
+                            <td className="px-4 py-3 hidden sm:table-cell">
+                              <HashScanLink txHash={tx.txHash} />
+                            </td>
+                            <td className="px-4 py-3">
+                              <StatusBadge status={tx.status} />
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground italic">
+                            No transactions found
+                          </td>
                         </tr>
-                      ))
-                    ) : (
-                      <tr><td colSpan={5} className="px-4 py-12 text-center text-muted-foreground italic">No transactions found</td></tr>
-                    )}
-                  </tbody>
-                </table>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </TabsContent>
           ))}

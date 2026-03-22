@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { usePoolContractPaused } from '@/hooks/usePoolContractPaused';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '@/lib/api';
 import { getLendingPool, getERC20, getERC20Read, getLendingPoolRead } from '@/lib/contracts';
@@ -22,16 +23,7 @@ export function useLenderActions(pool: Pool | null) {
     enabled: !!pool && !!address,
   });
 
-  // Check Paused State
-  const pausedQuery = useQuery({
-    queryKey: ['pool-paused', pool?.contractAddress],
-    queryFn: async () => {
-      if (!pool?.contractAddress) return false;
-      const contract = getLendingPoolRead(pool.contractAddress);
-      return await contract.paused();
-    },
-    enabled: !!pool?.contractAddress,
-  });
+  const pausedQuery = usePoolContractPaused(pool?.contractAddress);
 
   // Check Max Withdraw/Redeem
   const limitsQuery = useQuery({

@@ -19,6 +19,7 @@ import { BorrowerWalletEntity } from '../entities/borrower-wallet.entity';
 import { TransactionRecordEntity, TxType } from '../entities/transaction-record.entity';
 import { LenderPositionEntity } from '../entities/lender-position.entity';
 import { QueueJobEntity } from '../entities/queue-job.entity';
+import { UserEntity } from '../entities/user.entity';
 import { ContractService } from '../contracts/contract.service';
 import { QueueService } from '../queue/queue.service';
 import { ChainalysisService } from '../screening/chainalysis.service';
@@ -64,6 +65,8 @@ export class PoolsService {
     private readonly positions: Repository<LenderPositionEntity>,
     @InjectRepository(QueueJobEntity)
     private readonly queueJobs: Repository<QueueJobEntity>,
+    @InjectRepository(UserEntity)
+    private readonly users: Repository<UserEntity>,
     private readonly config: ConfigService,
     private readonly contracts: ContractService,
     private readonly queue: QueueService,
@@ -171,12 +174,15 @@ export class PoolsService {
   // ─── Pool Creation (borrower signs tx from frontend) ──────
 
   /**
-   * Saves a pool draft and optional compliance file. On-chain creation is performed
+   * Saves a pool draft and required loan tape file. On-chain creation is performed
    * by an admin from the portal; this path does not send a factory transaction.
    */
   async createPoolDirect(borrowerIdentifier: string, dto: CreatePoolDto, file?: Express.Multer.File) {
     if (!dto.poolTokenAddress?.trim()) {
       throw new BadRequestException('poolTokenAddress is required');
+    }
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Loan tape upload is required');
     }
     await this.screening.assertAddressAllowed(borrowerIdentifier);
 
@@ -194,19 +200,17 @@ export class PoolsService {
       feeCollectorAddress: dto.feeCollectorAddress,
     });
 
-    if (file?.buffer?.length) {
-      const uploadRoot =
-        this.config.get<string>('UPLOAD_DIR')?.trim() || join(process.cwd(), 'uploads');
-      const relDir = 'pool-drafts';
-      const absDir = join(uploadRoot, relDir);
-      await mkdir(absDir, { recursive: true });
-      const ext = extname(file.originalname || '') || '.bin';
-      const storedName = `${randomUUID()}${ext}`;
-      const absPath = join(absDir, storedName);
-      await writeFile(absPath, file.buffer);
-      draft.documentPath = join(relDir, storedName).replace(/\\/g, '/');
-      draft.documentOriginalName = file.originalname || storedName;
-    }
+    const uploadRoot =
+      this.config.get<string>('UPLOAD_DIR')?.trim() || join(process.cwd(), 'uploads');
+    const relDir = 'pool-drafts';
+    const absDir = join(uploadRoot, relDir);
+    await mkdir(absDir, { recursive: true });
+    const ext = extname(file.originalname || '') || '.bin';
+    const storedName = `${randomUUID()}${ext}`;
+    const absPath = join(absDir, storedName);
+    await writeFile(absPath, file.buffer);
+    draft.documentPath = join(relDir, storedName).replace(/\\/g, '/');
+    draft.documentOriginalName = file.originalname || storedName;
 
     await this.drafts.save(draft);
 
@@ -223,23 +227,52 @@ export class PoolsService {
       where: { indexed: false },
       order: { createdAt: 'DESC' },
     });
-    return rows.map((d) => ({
-      id: d.id,
-      borrowerIdentifier: d.borrowerIdentifier,
-      name: d.name,
-      symbol: d.symbol,
-      apyBasisPoints: d.apyBasisPoints,
-      poolSize: d.poolSize,
-      poolTokenAddress: d.poolTokenAddress,
-      hasDocument: Boolean(d.documentPath),
-      documentOriginalName: d.documentOriginalName,
-      createdAt: d.createdAt,
-    }));
+    return Promise.all(
+      rows.map(async (d) => ({
+        id: d.id,
+        borrowerIdentifier: d.borrowerIdentifier,
+        name: d.name,
+        symbol: d.symbol,
+        apyBasisPoints: d.apyBasisPoints,
+        poolSize: d.poolSize,
+        poolTokenAddress: d.poolTokenAddress,
+        hasDocument: Boolean(d.documentPath),
+        documentOriginalName: d.documentOriginalName,
+        createdAt: d.createdAt,
+        borrower: await this.resolveBorrowerProfileForDraft(d.borrowerIdentifier),
+      })),
+    );
+  }
+
+  private async resolveBorrowerProfileForDraft(borrowerIdentifier: string): Promise<{
+    username: string | null;
+    walletAddress: string | null;
+    displayName: string | null;
+    email: string | null;
+    country: string | null;
+    role: string;
+  } | null> {
+    const id = (borrowerIdentifier || '').trim().toLowerCase();
+    if (!id) return null;
+    const isEvmAddr = /^0x[a-f0-9]{40}$/.test(id);
+    const user = isEvmAddr
+      ? await this.users.findOne({ where: { walletAddress: id } })
+      : await this.users.findOne({ where: { username: id } });
+    if (!user) return null;
+    return {
+      username: user.username,
+      walletAddress: user.walletAddress,
+      displayName: user.displayName,
+      email: user.email,
+      country: user.country,
+      role: user.role,
+    };
   }
 
   async getPoolDraftForAdmin(id: string) {
     const d = await this.drafts.findOne({ where: { id } });
     if (!d) throw new NotFoundException('Draft not found');
+    const borrower = await this.resolveBorrowerProfileForDraft(d.borrowerIdentifier);
     return {
       id: d.id,
       borrowerIdentifier: d.borrowerIdentifier,
@@ -256,6 +289,7 @@ export class PoolsService {
       indexed: d.indexed,
       txHash: d.txHash,
       createdAt: d.createdAt,
+      borrower,
     };
   }
 

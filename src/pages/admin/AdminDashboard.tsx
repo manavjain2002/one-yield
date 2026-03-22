@@ -6,20 +6,12 @@ import { Link } from 'react-router-dom';
 import { useAdminPoolDrafts } from '@/hooks/useAdminPoolDrafts';
 import { StatusBadge } from '@/components/StatusBadge';
 import { AddressLink } from '@/components/AddressLink';
-import { useQuery } from '@tanstack/react-query';
-import { getLendingPoolRead } from '@/lib/contracts';
 import { Loader2 } from 'lucide-react';
 import type { Pool } from '@/data/mockData';
+import { usePoolContractPaused } from '@/hooks/usePoolContractPaused';
 
 function PoolRow({ p, actions }: { p: Pool; actions: any }) {
-  const { data: isPaused, isLoading: pausedLoading } = useQuery({
-    queryKey: ['pool-paused', p.contractAddress],
-    queryFn: async () => {
-      if (!p.contractAddress) return false;
-      return await getLendingPoolRead(p.contractAddress).paused();
-    },
-    enabled: !!p.contractAddress,
-  });
+  const { data: isPaused, isLoading: pausedLoading } = usePoolContractPaused(p.contractAddress);
 
   const isClosed = p.status === 'closed';
 

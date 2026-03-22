@@ -8,6 +8,7 @@ import { BorrowerWalletEntity } from '../entities/borrower-wallet.entity';
 import { TransactionRecordEntity } from '../entities/transaction-record.entity';
 import { LenderPositionEntity } from '../entities/lender-position.entity';
 import { QueueJobEntity } from '../entities/queue-job.entity';
+import { UserEntity } from '../entities/user.entity';
 import { ContractsModule } from '../contracts/contracts.module';
 import { QueueModule } from '../queue/queue.module';
 import { AuthModule } from '../auth/auth.module';
@@ -31,6 +32,7 @@ import {
       TransactionRecordEntity,
       LenderPositionEntity,
       QueueJobEntity,
+      UserEntity,
     ]),
     ContractsModule,
     QueueModule,

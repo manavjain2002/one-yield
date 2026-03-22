@@ -8,6 +8,7 @@ import { AddressLink } from '@/components/AddressLink';
 import { Loader2, FileText, Download, CheckCircle2, ArrowRight } from 'lucide-react';
 import { api } from '@/lib/api';
 import { AdminDeployPoolButton } from '@/components/AdminDeployPoolButton';
+import { AdminDraftBorrowerCard } from '@/components/AdminDraftBorrowerCard';
 
 function DraftDetailView({ id }: { id: string }) {
   const { data: draft, isLoading } = useAdminPoolDraft(id);
@@ -37,13 +38,18 @@ function DraftDetailView({ id }: { id: string }) {
   return (
     <div className="flex flex-col gap-6 h-full overflow-y-auto pr-1 custom-scrollbar animate-in fade-in slide-in-from-right-4 duration-300">
       <div className="space-y-4">
+        <AdminDraftBorrowerCard
+          borrowerIdentifier={draft.borrowerIdentifier}
+          borrower={draft.borrower ?? null}
+          compact
+        />
+
         <div className="glass-card rounded-2xl border border-border/50 overflow-hidden divide-y divide-border/10">
           <div className="px-4 py-3 bg-secondary/10 flex justify-between items-center text-xs font-bold uppercase tracking-wider text-muted-foreground">
             Specifications
             <span className="bg-primary/20 text-primary px-2 py-0.5 rounded-full">DRAFT</span>
           </div>
           {[
-            { label: 'Borrower', value: draft.borrowerIdentifier, isAddr: /^0x[a-fA-F0-9]{40}$/.test(draft.borrowerIdentifier || '') },
             { label: 'APY', value: `${draft.apyBasisPoints / 100}% (${draft.apyBasisPoints} bps)` },
             { label: 'Target Size', value: `$${(Number(draft.poolSize) / 1e6).toLocaleString()}`, isMono: true },
             { label: 'Token', value: draft.poolTokenAddress, isAddr: true },
@@ -84,7 +90,7 @@ function DraftDetailView({ id }: { id: string }) {
           <div className="flex items-start gap-3 min-w-0">
             <FileText className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
             <div className="min-w-0">
-              <p className="text-sm font-semibold">Compliance document</p>
+              <p className="text-sm font-semibold">Loan tape</p>
               {draft.hasDocument ? (
                 <p className="text-xs text-muted-foreground truncate" title={draft.documentOriginalName ?? ''}>
                   {draft.documentOriginalName ?? 'Attached file'}
@@ -148,7 +154,9 @@ export default function AdminPoolDraftsPage() {
                     <h3 className="font-bold text-sm truncate pr-2">{d.name}</h3>
                     <span className="text-[10px] font-mono font-bold text-muted-foreground shrink-0 uppercase">{d.symbol}</span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground font-mono truncate mb-3">{d.borrowerIdentifier}</p>
+                  <p className="text-[10px] text-muted-foreground truncate mb-3">
+                    {d.borrower?.displayName || d.borrower?.email || d.borrowerIdentifier}
+                  </p>
                   <div className="flex items-center justify-between border-t border-border/10 pt-2">
                     <span className="text-xs font-bold text-success">{d.apyBasisPoints / 100}% APR</span>
                     <div className="flex items-center gap-2">
@@ -175,7 +183,7 @@ export default function AdminPoolDraftsPage() {
                   </div>
                   <div>
                     <h3 className="font-bold text-foreground/80">Select a Draft</h3>
-                    <p className="text-xs leading-relaxed mt-1">Review pool specifications and compliance documents before on-chain deployment.</p>
+                    <p className="text-xs leading-relaxed mt-1">Review pool specifications and loan tape before on-chain deployment.</p>
                   </div>
                 </div>
               </div>

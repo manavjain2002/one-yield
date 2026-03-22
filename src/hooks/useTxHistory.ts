@@ -9,6 +9,8 @@ type ApiTx = {
   status: string;
   createdAt: string;
   tokenAddress?: string | null;
+  fromAddress?: string | null;
+  toAddress?: string | null;
 };
 
 const KNOWN_TYPES = new Set<string>([
@@ -39,6 +41,8 @@ function mapTx(t: ApiTx): TxHistory {
     timestamp: t.createdAt,
     txHash: t.txHash,
     status: st,
+    fromAddress: t.fromAddress ?? null,
+    toAddress: t.toAddress ?? null,
   };
 }
 

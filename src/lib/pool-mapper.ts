@@ -99,6 +99,8 @@ export function mapApiPoolToUi(p: ApiPool): Pool {
     borrowerPools: borrowerPools.map((b) => ({
       v1PoolId: b.v1PoolId,
       dedicatedWalletAddress: b.dedicatedWalletAddress,
+      allocationBps: b.allocationBps ?? 0,
+      fundsDeployed: b.fundsDeployed ?? '0',
     })),
   };
 }

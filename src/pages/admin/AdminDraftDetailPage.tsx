@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { AdminDeployPoolButton } from '@/components/AdminDeployPoolButton';
 import { Loader2, FileText, Download } from 'lucide-react';
 import { AddressLink } from '@/components/AddressLink';
+import { AdminDraftBorrowerCard } from '@/components/AdminDraftBorrowerCard';
 
 export default function AdminDraftDetailPage() {
   const { draftId } = useParams<{ draftId: string }>();
@@ -73,13 +74,14 @@ export default function AdminDraftDetailPage() {
 
         <div className="max-w-3xl space-y-6">
           <div className="space-y-6">
+            <AdminDraftBorrowerCard
+              borrowerIdentifier={draft.borrowerIdentifier}
+              borrower={draft.borrower ?? null}
+            />
+
             <div className="glass-card rounded-2xl border border-border/50 overflow-hidden divide-y divide-border/10">
               <div className="px-5 py-4 bg-secondary/10">
                 <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Pool Specifications</h3>
-              </div>
-              <div className="px-5 py-3 flex flex-col gap-1">
-                <dt className="text-[10px] font-bold uppercase text-muted-foreground">Borrower Identifier</dt>
-                <dd className="font-mono text-xs break-all">{draft.borrowerIdentifier}</dd>
               </div>
               <div className="px-5 py-3 flex flex-col gap-1">
                 <dt className="text-[10px] font-bold uppercase text-muted-foreground">APY / Interest Rate</dt>
@@ -107,7 +109,7 @@ export default function AdminDraftDetailPage() {
               <div className="space-y-1">
                 <h3 className="text-base font-bold text-primary">On-Chain Deployment</h3>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Review the specifications and supporting documents before creating. 
+                  Review the specifications and loan tape before creating.
                   This action will deploy the contract via the Pool Factory.
                 </p>
               </div>
@@ -125,7 +127,7 @@ export default function AdminDraftDetailPage() {
               <div className="flex items-start gap-3 min-w-0">
                 <FileText className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold">Compliance document</p>
+                  <p className="text-sm font-semibold">Loan tape</p>
                   {draft.hasDocument ? (
                     <p className="text-xs text-muted-foreground truncate" title={draft.documentOriginalName ?? ''}>
                       {draft.documentOriginalName ?? 'Attached file'}

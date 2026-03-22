@@ -154,7 +154,7 @@ function RainbowKitWrapper({ children }: { children: React.ReactNode }) {
 const App = () => (
   <WagmiProvider config={config}>
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+      <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
         <RainbowKitWrapper>
           <TooltipProvider>
             <WalletProvider>

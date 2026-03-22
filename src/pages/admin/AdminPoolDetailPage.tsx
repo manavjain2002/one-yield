@@ -6,36 +6,33 @@ import { useAdminPoolActions } from '@/hooks/useAdminPoolActions';
 import { Button } from '@/components/ui/button';
 import { AddressLink } from '@/components/AddressLink';
 import { StatusBadge } from '@/components/StatusBadge';
-import { 
-  Loader2, 
-  FileText, 
-  Download, 
-  Pause, 
-  Play, 
-  XCircle, 
+import {
+  Loader2,
+  FileText,
+  Download,
+  Pause,
+  Play,
+  XCircle,
   ChevronLeft,
+  Wallet,
 } from 'lucide-react';
+import { useAccount } from 'wagmi';
+import { useConnectModal } from '@rainbow-me/rainbowkit';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { useQuery } from '@tanstack/react-query';
-import { getLendingPoolRead } from '@/lib/contracts';
+import { usePoolContractPaused } from '@/hooks/usePoolContractPaused';
 
 export default function AdminPoolDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { isConnected } = useAccount();
+  const { openConnectModal } = useConnectModal();
   const { data: pools = [], isLoading: poolsLoading } = useAdminPools();
   const pool = pools.find(p => p.id === id);
   
   const { data: draft, isLoading: draftLoading } = useAdminPoolDraft(pool?.draftId || '');
   const actions = useAdminPoolActions();
 
-  const { data: isPaused, isLoading: pausedLoading } = useQuery({
-    queryKey: ['pool-paused', pool?.contractAddress],
-    queryFn: async () => {
-      if (!pool?.contractAddress) return false;
-      return await getLendingPoolRead(pool.contractAddress).paused();
-    },
-    enabled: !!pool?.contractAddress,
-  });
+  const { data: isPaused, isLoading: pausedLoading } = usePoolContractPaused(pool?.contractAddress);
 
   const downloadFile = async () => {
     if (!draft) return;
@@ -88,38 +85,62 @@ export default function AdminPoolDetailPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={actions.pauseTarget.isPending || isClosed || isPaused === true || pausedLoading}
-              onClick={() => actions.pauseTarget.mutate(pool)}
-              className="gap-2"
-            >
-              <Pause className="h-3.5 w-3.5" /> Pause
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={actions.unpauseTarget.isPending || isClosed || isPaused === false || pausedLoading}
-              onClick={() => actions.unpauseTarget.mutate(pool)}
-              className="gap-2"
-            >
-              <Play className="h-3.5 w-3.5" /> Unpause
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              disabled={actions.closePoolFactory.isPending || isClosed}
-              onClick={() => {
-                if (window.confirm('Close this pool via factory? This cannot be undone.')) {
-                  actions.closePoolFactory.mutate(pool);
+          <div className="flex flex-col items-end gap-2 max-w-sm">
+            {!isConnected && (
+              <p className="text-[11px] text-muted-foreground text-right leading-snug">
+                Connect a browser wallet to sign factory transactions (pause, unpause, close), same as when deploying from drafts.
+              </p>
+            )}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {!isConnected && (
+                <Button type="button" variant="default" size="sm" className="gap-2" onClick={() => openConnectModal?.()}>
+                  <Wallet className="h-3.5 w-3.5" /> Connect wallet
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={
+                  !isConnected ||
+                  actions.pauseTarget.isPending ||
+                  isClosed ||
+                  isPaused === true ||
+                  pausedLoading
                 }
-              }}
-              className="gap-2"
-            >
-              <XCircle className="h-3.5 w-3.5" /> Close Pool
-            </Button>
+                onClick={() => actions.pauseTarget.mutate(pool)}
+                className="gap-2"
+              >
+                <Pause className="h-3.5 w-3.5" /> Pause
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={
+                  !isConnected ||
+                  actions.unpauseTarget.isPending ||
+                  isClosed ||
+                  isPaused === false ||
+                  pausedLoading
+                }
+                onClick={() => actions.unpauseTarget.mutate(pool)}
+                className="gap-2"
+              >
+                <Play className="h-3.5 w-3.5" /> Unpause
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={!isConnected || actions.closePoolFactory.isPending || isClosed}
+                onClick={() => {
+                  if (window.confirm('Close this pool via factory? This cannot be undone.')) {
+                    actions.closePoolFactory.mutate(pool);
+                  }
+                }}
+                className="gap-2"
+              >
+                <XCircle className="h-3.5 w-3.5" /> Close Pool
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -128,6 +149,21 @@ export default function AdminPoolDetailPage() {
             <div className="glass-card rounded-2xl border border-border/50 overflow-hidden divide-y divide-border/10">
               <div className="px-5 py-4 bg-secondary/10 flex justify-between items-center text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Pool Specifications
+              </div>
+              <div className="px-5 py-3 flex flex-col gap-1">
+                <dt className="text-[10px] font-bold uppercase text-muted-foreground/70">On-chain pause</dt>
+                <dd className="text-sm font-medium flex items-center gap-2">
+                  {pausedLoading ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                      <span className="text-muted-foreground">Checking contract…</span>
+                    </>
+                  ) : isPaused ? (
+                    'Yes — pool is paused'
+                  ) : (
+                    'No — active (not paused)'
+                  )}
+                </dd>
               </div>
               {[
                 { label: 'Borrower', value: pool.borrowerAddress, isAddr: true },
@@ -162,7 +198,7 @@ export default function AdminPoolDetailPage() {
               <div className="flex items-start gap-3 min-w-0">
                 <FileText className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold">Compliance document</p>
+                  <p className="text-sm font-semibold">Loan tape</p>
                   {draft?.hasDocument ? (
                     <p className="text-xs text-muted-foreground truncate" title={draft.documentOriginalName ?? ''}>
                       {draft.documentOriginalName ?? 'Attached file'}

@@ -4,6 +4,15 @@ import { api, getErrorMessage } from '@/lib/api';
 import { getPoolFactory } from '@/lib/contracts';
 import type { Pool } from '@/data/mockData';
 
+export type AdminDraftBorrowerProfile = {
+  username: string | null;
+  walletAddress: string | null;
+  displayName: string | null;
+  email: string | null;
+  country: string | null;
+  role: string;
+};
+
 export type AdminPoolDraftDetail = {
   id: string;
   borrowerIdentifier: string;
@@ -20,6 +29,8 @@ export type AdminPoolDraftDetail = {
   indexed: boolean;
   txHash: string | null;
   createdAt: string;
+  /** Present when API returns enriched borrower profile; treat missing as unlinked. */
+  borrower?: AdminDraftBorrowerProfile | null;
 };
 
 async function confirmFactoryTx(
@@ -53,7 +64,10 @@ export function useAdminPoolActions() {
         throw e;
       }
     },
-    onSuccess: () => {
+    onSuccess: (_data, pool) => {
+      const addr = pool.contractAddress?.trim();
+      if (addr) queryClient.setQueryData(['pool-paused', addr], true);
+      void queryClient.invalidateQueries({ queryKey: ['pool-paused'] });
       void queryClient.invalidateQueries({ queryKey: ['admin', 'pools'] });
       void queryClient.invalidateQueries({ queryKey: ['manager-summary'] });
       void queryClient.invalidateQueries({ queryKey: ['pools'] });
@@ -76,7 +90,10 @@ export function useAdminPoolActions() {
         throw e;
       }
     },
-    onSuccess: () => {
+    onSuccess: (_data, pool) => {
+      const addr = pool.contractAddress?.trim();
+      if (addr) queryClient.setQueryData(['pool-paused', addr], false);
+      void queryClient.invalidateQueries({ queryKey: ['pool-paused'] });
       void queryClient.invalidateQueries({ queryKey: ['admin', 'pools'] });
       void queryClient.invalidateQueries({ queryKey: ['manager-summary'] });
       void queryClient.invalidateQueries({ queryKey: ['pools'] });
@@ -100,6 +117,7 @@ export function useAdminPoolActions() {
       }
     },
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['pool-paused'] });
       void queryClient.invalidateQueries({ queryKey: ['admin', 'pools'] });
       void queryClient.invalidateQueries({ queryKey: ['manager-summary'] });
       void queryClient.invalidateQueries({ queryKey: ['pools'] });
@@ -135,6 +153,7 @@ export function useAdminPoolActions() {
       }
     },
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['pool-paused'] });
       void queryClient.invalidateQueries({ queryKey: ['admin', 'pools'] });
       void queryClient.invalidateQueries({ queryKey: ['admin', 'pool-drafts'] });
       void queryClient.invalidateQueries({ queryKey: ['manager-summary'] });

@@ -34,7 +34,12 @@ export interface Pool {
   draftId?: string;
   allocations: { wallet: string; percentage: number; fundsAssigned: number }[];
 
-  borrowerPools?: { v1PoolId: string; dedicatedWalletAddress: string }[];
+  borrowerPools?: {
+    v1PoolId: string;
+    dedicatedWalletAddress: string;
+    allocationBps: number;
+    fundsDeployed: string;
+  }[];
 }
 
 export interface LenderPosition {
@@ -74,6 +79,8 @@ export interface TxHistory {
   timestamp: string;
   txHash: string;
   status: 'confirmed' | 'pending' | 'failed';
+  fromAddress?: string | null;
+  toAddress?: string | null;
 }
 
 export const mockPools: Pool[] = [

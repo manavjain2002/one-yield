@@ -22,6 +22,7 @@ export function useCreatePool() {
   return useMutation({
     mutationFn: async (payload: CreatePoolPayload) => {
       if (!isApiConfigured()) throw new Error('Backend API not configured');
+      if (!payload.file) throw new Error('Loan tape file is required');
 
       const formData = new FormData();
       formData.append('name', payload.name);
@@ -34,9 +35,7 @@ export function useCreatePool() {
       if (payload.poolTokenAddress) {
         formData.append('poolTokenAddress', payload.poolTokenAddress);
       }
-      if (payload.file) {
-        formData.append('file', payload.file);
-      }
+      formData.append('file', payload.file);
 
       const tid = toast.loading('Submitting pool draft...');
       try {

@@ -61,8 +61,12 @@ export default function BorrowerDashboard() {
     if (!apyNum || apyNum <= 0 || apyNum > 100) { toast.error('APY must be between 0.01 and 100'); return; }
     const bps = Math.round(apyNum * 100);
     const poolSizeWei = String(usd * 1_000_000);
+    if (!file) {
+      toast.error('Upload Loan Tape is required.');
+      return;
+    }
     try {
-      await createPool.mutateAsync({ name, symbol, poolSize: poolSizeWei, apyBasisPoints: bps, poolTokenAddress: tokenAddress, file: file ?? undefined });
+      await createPool.mutateAsync({ name, symbol, poolSize: poolSizeWei, apyBasisPoints: bps, poolTokenAddress: tokenAddress, file });
       setShowCreatePool(false);
       setName(''); setSymbol(''); setBorrowUsd(''); setApyInput(''); setFile(null);
     } catch {}
@@ -317,10 +321,11 @@ export default function BorrowerDashboard() {
               <Input type="text" inputMode="decimal" value={apyInput} onChange={e => setApyInput(e.target.value)} placeholder="e.g., 8.5" className="bg-secondary/50 border-border" />
             </div>
             <div className="space-y-2">
-              <Label>Supporting Document (Excel)</Label>
+              <Label>Upload Loan Tape <span className="text-destructive">*</span></Label>
               <Input type="file" accept=".xlsx,.xls,.csv" onChange={e => setFile(e.target.files?.[0] || null)} className="bg-secondary/50 border-border file:text-primary file:font-medium" />
+              <p className="text-xs text-muted-foreground">Required. Accepted: .xlsx, .xls, .csv</p>
             </div>
-            <Button type="button" className="w-full gradient-primary rounded-xl mt-2" disabled={createPool.isPending || !name.trim() || !symbol.trim() || !borrowUsd || !apyInput} onClick={() => void handleCreate()}>
+            <Button type="button" className="w-full gradient-primary rounded-xl mt-2" disabled={createPool.isPending || !name.trim() || !symbol.trim() || !borrowUsd || !apyInput || !file} onClick={() => void handleCreate()}>
               {createPool.isPending ? 'Submitting...' : 'Create Pool'}
             </Button>
           </div>

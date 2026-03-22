@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, isApiConfigured } from '@/lib/api';
 import { useWallet } from '@/contexts/WalletContext';
-import type { AdminPoolDraftDetail } from '@/hooks/useAdminPoolActions';
+import type { AdminDraftBorrowerProfile, AdminPoolDraftDetail } from '@/hooks/useAdminPoolActions';
 
 export type AdminPoolDraftSummary = {
   id: string;
@@ -14,6 +14,7 @@ export type AdminPoolDraftSummary = {
   hasDocument: boolean;
   documentOriginalName: string | null;
   createdAt: string;
+  borrower?: AdminDraftBorrowerProfile | null;
 };
 
 export function useAdminPoolDrafts() {
