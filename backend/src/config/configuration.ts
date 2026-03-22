@@ -3,6 +3,7 @@ export default () => ({
   nodeEnv: process.env.NODE_ENV ?? 'development',
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:8080',
   database: {
+    url: process.env.DATABASE_URL,
     host: process.env.DATABASE_HOST ?? 'localhost',
     port: parseInt(process.env.DATABASE_PORT ?? '5432', 10),
     username: process.env.DATABASE_USER ?? 'oneyield',
