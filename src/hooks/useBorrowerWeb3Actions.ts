@@ -44,9 +44,12 @@ export function useBorrowerWeb3Actions({ poolTokenAddress, fundManagerAddress, p
       const tid = toast.loading('Waiting for MetaMask signature to approve...');
       try {
         const token = await getERC20(poolTokenAddress);
+        console.log('amountHuman', amountHuman, poolTokenAddress, fundManagerAddress);
         const amountWei = parseUnits(amountHuman, 6); // Assuming USDC 6 decimals
-
+        console.log('amountHuman', amountHuman, poolTokenAddress, fundManagerAddress);
         console.log('amountWei', amountWei);
+        console.log('fundManagerAddress', fundManagerAddress);
+        console.log('token', token);
         const tx = await token.approve(fundManagerAddress, amountWei);
         toast.loading('Approving tokens...', { id: tid });
         
