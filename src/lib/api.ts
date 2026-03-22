@@ -40,7 +40,39 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-let isRefreshing = false;
+/** Paths where 401 must not trigger refresh (public auth or refresh itself). */
+const AUTH_401_NO_REFRESH = new Set([
+  '/auth/login',
+  '/auth/register',
+  '/auth/challenge',
+  '/auth/verify',
+  '/auth/username-available',
+  '/auth/refresh',
+]);
+
+function requestPathname(config: { url?: string; baseURL?: string } | undefined): string {
+  if (!config?.url) return '';
+  const u = config.url;
+  if (u.startsWith('http')) {
+    try {
+      return new URL(u).pathname;
+    } catch {
+      return u;
+    }
+  }
+  const base = config.baseURL ?? '';
+  if (base) {
+    try {
+      const origin = base.endsWith('/') ? base.slice(0, -1) : base;
+      return new URL(u, origin + '/').pathname;
+    } catch {
+      /* fall through */
+    }
+  }
+  return u.startsWith('/') ? u : `/${u}`;
+}
+
+let refreshPromise: Promise<string> | null = null;
 
 api.interceptors.response.use(
   (response) => {
@@ -52,24 +84,51 @@ api.interceptors.response.use(
   async (error) => {
     if (axios.isAxiosError(error)) {
       const originalRequest = error.config;
-      if (error.response?.status === 401 && !isRefreshing && originalRequest && !(originalRequest as any)._retry) {
-        isRefreshing = true;
-        (originalRequest as any)._retry = true;
+      if ((originalRequest as { _skipAuthRefresh?: boolean } | undefined)?._skipAuthRefresh) {
+        return Promise.reject(error);
+      }
+
+      const status = error.response?.status;
+      if (status === 401 && originalRequest) {
+        const path = requestPathname(originalRequest).split('?')[0];
+        if (AUTH_401_NO_REFRESH.has(path)) {
+          return Promise.reject(error);
+        }
+
+        const stored = loadStoredToken();
+        if (!stored) {
+          return Promise.reject(error);
+        }
+
+        if ((originalRequest as { _retry?: boolean })._retry) {
+          window.dispatchEvent(new CustomEvent('yield_unauthorized'));
+          return Promise.reject(error);
+        }
+
+        (originalRequest as { _retry?: boolean })._retry = true;
+
         try {
-          const { data } = await api.post('/auth/refresh');
-          setAuthToken(data.accessToken);
+          if (!refreshPromise) {
+            refreshPromise = api
+              .post<{ accessToken: string }>('/auth/refresh', undefined, {
+                _skipAuthRefresh: true,
+              } as Record<string, unknown>)
+              .then((res) => res.data.accessToken)
+              .finally(() => {
+                refreshPromise = null;
+              });
+          }
+          const accessToken = await refreshPromise;
+          setAuthToken(accessToken);
           if (originalRequest.headers) {
-            originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+            originalRequest.headers.Authorization = `Bearer ${accessToken}`;
           }
           return api(originalRequest);
         } catch {
           console.warn('[Frontend-API] Refresh failed - Triggering re-auth');
           window.dispatchEvent(new CustomEvent('yield_unauthorized'));
-        } finally {
-          isRefreshing = false;
+          return Promise.reject(error);
         }
-      } else if (error.response?.status === 401) {
-        window.dispatchEvent(new CustomEvent('yield_unauthorized'));
       }
     }
     console.error(`%c[Frontend-API] Failed: ${error.config?.method?.toUpperCase()} ${error.config?.url}`, 'color: #ef4444; font-weight: bold;', {

@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import {
   IsEmail,
@@ -92,6 +100,7 @@ export class AuthController {
   }
 
   @Post('role')
+  @UseGuards(JwtAuthGuard)
   setRole(@CurrentUser() user: JwtUser, @Body() dto: SetRoleDto) {
     return this.auth.setRole(user.userId, dto.role);
   }
@@ -120,8 +129,7 @@ export class AuthController {
   }
 
   @Post('refresh')
-  @UseGuards(JwtAuthGuard)
-  refresh(@CurrentUser() user: any) {
-    return this.auth.refreshToken(user.userId);
+  refresh(@Headers('authorization') authorization?: string) {
+    return this.auth.refreshAccessTokenFromBearer(authorization);
   }
 }

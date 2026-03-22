@@ -33,9 +33,12 @@ export class AuthService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    const adminUsername = 'oyAdmin';
-    const adminPassword = this.config.get<string>('ADMIN_PASSWORD') || 'oy-admin-password-456';
-    
+    const adminUsername = this.normalizeUsername('admin');
+    const adminPassword =
+      this.config.get<string>('ADMIN_PASSWORD') || 'oy-admin-password-456';
+    const syncPassword =
+      this.config.get<string>('ADMIN_SEED_UPDATE_PASSWORD') !== 'false';
+
     let admin = await this.users.findOne({ where: { username: adminUsername } });
     if (!admin) {
       const passwordHash = await bcrypt.hash(adminPassword, 10);
@@ -43,11 +46,27 @@ export class AuthService implements OnModuleInit {
         username: adminUsername,
         passwordHash,
         role: 'admin',
+        displayName: 'Admin',
+        email: 'admin@admin.local',
+        country: 'US',
       });
       await this.users.save(admin);
-    } else if (admin.role !== 'admin') {
-      admin.role = 'admin';
-      await this.users.save(admin);
+    } else {
+      let dirty = false;
+      if (admin.role !== 'admin') {
+        admin.role = 'admin';
+        dirty = true;
+      }
+      if (syncPassword) {
+        const matches =
+          admin.passwordHash &&
+          (await bcrypt.compare(adminPassword, admin.passwordHash));
+        if (!matches) {
+          admin.passwordHash = await bcrypt.hash(adminPassword, 10);
+          dirty = true;
+        }
+      }
+      if (dirty) await this.users.save(admin);
     }
   }
 
@@ -216,6 +235,47 @@ export class AuthService implements OnModuleInit {
       role: user.role,
     });
     return { accessToken, role: user.role };
+  }
+
+  /**
+   * Issue a new access token from a Bearer JWT that may be expired (signature must still verify).
+   * Rejects tokens whose expiry is too far in the past (JWT_REFRESH_MAX_STALE_DAYS, default 7).
+   */
+  async refreshAccessTokenFromBearer(authorization: string | undefined) {
+    const raw = authorization?.trim();
+    if (!raw?.toLowerCase().startsWith('bearer ')) {
+      throw new UnauthorizedException('Missing token');
+    }
+    const token = raw.slice(7).trim();
+    if (!token) throw new UnauthorizedException('Missing token');
+
+    let payload: { sub?: string; exp?: number };
+    try {
+      payload = await this.jwt.verifyAsync(token, { ignoreExpiration: true });
+    } catch {
+      throw new UnauthorizedException('Invalid token');
+    }
+
+    const staleDays = parseInt(
+      this.config.get<string>('JWT_REFRESH_MAX_STALE_DAYS') ?? '7',
+      10,
+    );
+    const maxStaleSec =
+      (Number.isFinite(staleDays) && staleDays > 0 ? staleDays : 7) *
+      24 *
+      3600;
+    if (typeof payload.exp === 'number') {
+      const nowSec = Date.now() / 1000;
+      if (nowSec > payload.exp + maxStaleSec) {
+        throw new UnauthorizedException('Session too old; please sign in again');
+      }
+    }
+
+    if (!payload.sub) {
+      throw new UnauthorizedException('Invalid token');
+    }
+
+    return this.refreshToken(payload.sub);
   }
 
   async loginWithCredentials(username: string, passwordPlain: string) {

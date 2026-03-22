@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { AlertCircle } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useAccount } from 'wagmi';
@@ -19,8 +19,13 @@ export function AuthOverlay() {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (isWeb3Connected && needsReAuth) {
+      setNeedsReAuth(false);
+    }
+  }, [isWeb3Connected, needsReAuth, setNeedsReAuth]);
+
   if (isWeb3Connected) {
-    if (needsReAuth) setNeedsReAuth(false);
     return null;
   }
 
