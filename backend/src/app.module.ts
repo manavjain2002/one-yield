@@ -70,12 +70,10 @@ import { BorrowerWalletEntity } from './entities/borrower-wallet.entity';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         connection: {
-          url: config.get<string>('redis.url'),
           host: config.get<string>('redis.host'),
           port: config.get<number>('redis.port'),
           username: config.get<string>('redis.username'),
           password: config.get<string>('redis.password'),
-          family: 4,
         },
       }),
     }),

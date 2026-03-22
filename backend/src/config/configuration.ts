@@ -1,22 +1,44 @@
-export default () => ({
-  port: parseInt(process.env.PORT ?? '3001', 10),
-  nodeEnv: process.env.NODE_ENV ?? 'development',
-  corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:8080',
-  database: {
-    url: process.env.DATABASE_URL,
-    host: process.env.DATABASE_HOST ?? 'localhost',
-    port: parseInt(process.env.DATABASE_PORT ?? '5432', 10),
-    username: process.env.DATABASE_USER ?? 'oneyield',
-    password: process.env.DATABASE_PASSWORD ?? 'oneyield',
-    name: process.env.DATABASE_NAME ?? 'oneyield',
-  },
-  redis: {
-    url: process.env.REDIS_URL,
-    host: process.env.REDISHOST ?? process.env.REDIS_HOST ?? 'localhost',
-    port: parseInt(process.env.REDISPORT ?? process.env.REDIS_PORT ?? '6379', 10),
-    username: process.env.REDISUSER,
-    password: process.env.REDISPASSWORD ?? process.env.REDIS_PASSWORD,
-  },
+export default () => {
+  let redisHost = process.env.REDISHOST ?? process.env.REDIS_HOST ?? 'localhost';
+  let redisPort = parseInt(process.env.REDISPORT ?? process.env.REDIS_PORT ?? '6379', 10);
+  let redisUsername = process.env.REDISUSER;
+  let redisPassword = process.env.REDISPASSWORD ?? process.env.REDIS_PASSWORD;
+
+  const redisUrl =
+    process.env.NODE_ENV === 'production'
+      ? process.env.REDIS_URL
+      : process.env.REDIS_PUBLIC_URL || process.env.REDIS_URL;
+
+  if (redisUrl) {
+    try {
+      const parsed = new URL(redisUrl);
+      redisHost = parsed.hostname;
+      redisPort = parsed.port ? parseInt(parsed.port, 10) : redisPort;
+      redisUsername = parsed.username || redisUsername;
+      redisPassword = parsed.password || redisPassword;
+    } catch (e) {
+      // Ignore parsing errors
+    }
+  }
+
+  return {
+    port: parseInt(process.env.PORT ?? '3001', 10),
+    nodeEnv: process.env.NODE_ENV ?? 'development',
+    corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:8080',
+    database: {
+      url: process.env.DATABASE_URL,
+      host: process.env.DATABASE_HOST ?? 'localhost',
+      port: parseInt(process.env.DATABASE_PORT ?? '5432', 10),
+      username: process.env.DATABASE_USER ?? 'oneyield',
+      password: process.env.DATABASE_PASSWORD ?? 'oneyield',
+      name: process.env.DATABASE_NAME ?? 'oneyield',
+    },
+    redis: {
+      host: redisHost,
+      port: redisPort,
+      username: redisUsername,
+      password: redisPassword,
+    },
   blockchain: {
     network: process.env.BLOCKCHAIN_NETWORK ?? 'testnet',
     rpcUrl: process.env.RPC_URL ?? 'https://testnet.hashio.io/api',
@@ -39,4 +61,5 @@ export default () => ({
   oracle: {
     cron: process.env.ORACLE_CRON ?? '30 0 * * *',
   },
-});
+  };
+};
