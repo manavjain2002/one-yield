@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -77,7 +77,8 @@ const config = createConfig({
 const queryClient = new QueryClient();
 
 function ProtectedRoute({ children, allowedRole }: { children: React.ReactNode; allowedRole?: string }) {
-  const { isConnected, role, accessToken, authHydrated } = useWallet();
+  const { isConnected, role, accessToken, authHydrated, needsRoleSelection } = useWallet();
+  const location = useLocation();
   const bypassJwt =
     !isApiConfigured() || import.meta.env.VITE_USE_MOCK_WALLET === "true";
   if (!authHydrated) {
@@ -89,6 +90,9 @@ function ProtectedRoute({ children, allowedRole }: { children: React.ReactNode; 
   }
   if (!isConnected) return <Navigate to="/" replace />;
   if (!bypassJwt && !accessToken) return <Navigate to="/" replace />;
+  if (needsRoleSelection && location.pathname !== "/") {
+    return <Navigate to="/" replace />;
+  }
   if (allowedRole && role !== allowedRole) return <Navigate to="/" replace />;
   return <>{children}</>;
 }

@@ -19,6 +19,8 @@ interface WalletState {
   accessToken: string | null;
   walletType: WalletKind | null;
   needsReAuth: boolean;
+  /** From JWT: first-time Web3 signup must pick Lender vs Pool Manager before using the app. */
+  needsRoleSelection: boolean;
 }
 
 interface WalletContextType extends WalletState {
@@ -46,6 +48,7 @@ function decodeJwtPayload(token: string): {
   walletAddress?: string;
   username?: string;
   role?: UserRole;
+  needsRoleSelection?: boolean;
 } | null {
   try {
     const part = token.split('.')[1];
@@ -56,6 +59,7 @@ function decodeJwtPayload(token: string): {
       walletAddress?: string;
       role?: UserRole;
       username?: string;
+      needsRoleSelection?: boolean;
     };
     return json;
   } catch {
@@ -85,6 +89,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     accessToken: null,
     walletType: null,
     needsReAuth: false,
+    needsRoleSelection: false,
   });
 
   // Load stored token on mount
@@ -101,6 +106,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           username: payload.username || null,
           role: payload.role || null,
           isConnected: true,
+          needsRoleSelection: payload.needsRoleSelection === true,
         }));
       } else {
         setAuthToken(null);
@@ -150,6 +156,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       accessToken: null,
       walletType: null,
       needsReAuth: false,
+      needsRoleSelection: false,
     });
   }, [wagmiDisconnect]);
 
@@ -219,6 +226,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         });
 
         setAuthToken(auth.accessToken);
+        const decoded = decodeJwtPayload(auth.accessToken);
         setState((prev) => ({
           ...prev,
           isConnected: true,
@@ -226,6 +234,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           accessToken: auth.accessToken,
           role: auth.role,
           needsReAuth: false,
+          needsRoleSelection: decoded?.needsRoleSelection === true,
         }));
         
         toast.success('Web3 identity verified');
@@ -267,6 +276,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         accessToken: data.accessToken,
         role: data.role,
         needsReAuth: false,
+        needsRoleSelection: false,
       }));
       toast.success('Logged in successfully');
       return data;
@@ -307,6 +317,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         accessToken: data.accessToken,
         role: data.role,
         needsReAuth: false,
+        needsRoleSelection: false,
       }));
       toast.success('Registered successfully');
       return data;
@@ -319,16 +330,20 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const selectRole = useCallback(
     async (role: UserRole) => {
       if (!state.accessToken) {
-        setState((prev) => ({ ...prev, role }));
+        setState((prev) => ({ ...prev, role, needsRoleSelection: false }));
         return;
       }
       try {
         const { data } = await api.post<{ accessToken: string; role: UserRole }>('/auth/role', { role });
         setAuthToken(data.accessToken);
-        setState((prev) => ({ ...prev, role: data.role, accessToken: data.accessToken }));
+        setState((prev) => ({
+          ...prev,
+          role: data.role,
+          accessToken: data.accessToken,
+          needsRoleSelection: false,
+        }));
       } catch (e) {
         toast.error(getErrorMessage(e));
-        setState((prev) => ({ ...prev, role }));
       }
     },
     [state.accessToken],

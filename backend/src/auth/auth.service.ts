@@ -134,6 +134,7 @@ export class AuthService implements OnModuleInit {
     const evm = params.walletAddress.toLowerCase();
 
     let user = await this.users.findOne({ where: { walletAddress: evm } });
+    let needsRoleSelection = false;
 
     if (!user) {
       user = this.users.create({
@@ -141,12 +142,14 @@ export class AuthService implements OnModuleInit {
         role: 'lender',
       });
       await this.users.save(user);
+      needsRoleSelection = true;
     }
 
     const accessToken = await this.jwt.signAsync({
       sub: user.id,
       walletAddress: user.walletAddress,
       role: user.role,
+      ...(needsRoleSelection ? { needsRoleSelection: true } : {}),
     });
 
     return {
@@ -224,7 +227,7 @@ export class AuthService implements OnModuleInit {
     };
   }
 
-  async refreshToken(userId: string) {
+  async refreshToken(userId: string, preserveNeedsRoleSelection?: boolean) {
     const user = await this.users.findOne({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('User not found');
 
@@ -233,6 +236,7 @@ export class AuthService implements OnModuleInit {
       walletAddress: user.walletAddress,
       username: user.username,
       role: user.role,
+      ...(preserveNeedsRoleSelection ? { needsRoleSelection: true } : {}),
     });
     return { accessToken, role: user.role };
   }
@@ -249,7 +253,7 @@ export class AuthService implements OnModuleInit {
     const token = raw.slice(7).trim();
     if (!token) throw new UnauthorizedException('Missing token');
 
-    let payload: { sub?: string; exp?: number };
+    let payload: { sub?: string; exp?: number; needsRoleSelection?: boolean };
     try {
       payload = await this.jwt.verifyAsync(token, { ignoreExpiration: true });
     } catch {
@@ -275,7 +279,10 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException('Invalid token');
     }
 
-    return this.refreshToken(payload.sub);
+    return this.refreshToken(
+      payload.sub,
+      payload.needsRoleSelection === true,
+    );
   }
 
   async loginWithCredentials(username: string, passwordPlain: string) {

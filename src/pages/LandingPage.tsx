@@ -1,6 +1,7 @@
-import { useWallet } from '@/contexts/WalletContext';
+import { useWallet, type UserRole } from '@/contexts/WalletContext';
 import { Button } from '@/components/ui/button';
-import { Shield, Zap, Wallet, Landmark } from 'lucide-react';
+import { Shield, Zap, Wallet, Landmark, Loader2 } from 'lucide-react';
+import { isApiConfigured } from '@/lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
@@ -8,8 +9,19 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '@/assets/oneyield-logo.png';
 
 export default function LandingPage() {
-  const { isConnected, address, accessToken, role, authHydrated, connect, loginUser, registerUser } =
-    useWallet();
+  const {
+    isConnected,
+    address,
+    accessToken,
+    role,
+    authHydrated,
+    needsRoleSelection,
+    connect,
+    loginUser,
+    registerUser,
+    selectRole,
+  } = useWallet();
+  const [roleSubmitting, setRoleSubmitting] = useState<UserRole | null>(null);
   const [showWeb3Modal, setShowWeb3Modal] = useState(false);
   const [showCredsModal, setShowCredsModal] = useState(false);
   const [credMode, setCredMode] = useState<'login' | 'register'>('login');
@@ -59,17 +71,27 @@ export default function LandingPage() {
   useEffect(() => {
     if (!authHydrated || location.pathname !== '/') return;
     if (!accessToken || !role) return;
+    if (needsRoleSelection) return;
     const home = role === 'admin' ? '/admin' : `/${role}`;
     navigate(home, { replace: true });
-  }, [authHydrated, location.pathname, accessToken, role, navigate]);
+  }, [authHydrated, location.pathname, accessToken, role, needsRoleSelection, navigate]);
 
   const handleConnectMetaMask = async () => {
     try {
       await connect();
       setShowWeb3Modal(false);
-      // We don't show the role modal here anymore, because we wait for the accessToken
     } catch {
       setShowWeb3Modal(false);
+    }
+  };
+
+  const handlePickWeb3Role = async (picked: 'lender' | 'manager') => {
+    if (!isApiConfigured()) return;
+    setRoleSubmitting(picked);
+    try {
+      await selectRole(picked);
+    } finally {
+      setRoleSubmitting(null);
     }
   };
 
@@ -186,6 +208,58 @@ export default function LandingPage() {
           Lenders & Pool Managers use Web3. Borrowers & Admin use ID/Password.
         </p>
       </div>
+
+      {/* First-time Web3: choose Lender vs Pool Manager (JWT needsRoleSelection) */}
+      <Dialog open={Boolean(accessToken && needsRoleSelection && isApiConfigured())} onOpenChange={() => {}}>
+        <DialogContent
+          className="glass-card border-border/50 sm:max-w-md"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle className="text-center text-xl">Choose your role</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground text-center">
+            Select how you use OneYield with this wallet. You can sign in again later without choosing again.
+          </p>
+          <div className="flex flex-col gap-3 pt-2">
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              className="w-full h-12 rounded-xl font-semibold border-primary/30"
+              disabled={roleSubmitting !== null}
+              onClick={() => void handlePickWeb3Role('lender')}
+            >
+              {roleSubmitting === 'lender' ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                'Lender'
+              )}
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              className="w-full h-12 rounded-xl font-semibold border-primary/30"
+              disabled={roleSubmitting !== null}
+              onClick={() => void handlePickWeb3Role('manager')}
+            >
+              {roleSubmitting === 'manager' ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                'Pool Manager'
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Credentials Modal (Borrowers/Admin) */}
       <Dialog open={showCredsModal} onOpenChange={setShowCredsModal}>
