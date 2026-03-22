@@ -16,8 +16,7 @@ import {
   ChevronLeft,
   ExternalLink
 } from 'lucide-react';
-import { api, loadStoredToken } from '@/lib/api';
-import { resolvedApiBase } from '@/lib/api-env';
+import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { getLendingPoolRead } from '@/lib/contracts';
@@ -176,15 +175,16 @@ export default function AdminPoolDetailPage() {
                 </button>
               )}
             </div>
-            <div className="aspect-[3/4] glass-card rounded-2xl border border-border/50 bg-secondary/5 overflow-hidden relative shadow-inner">
+            <div className="aspect-[3/4] glass-card rounded-2xl border border-border/50 bg-secondary/5 overflow-hidden relative shadow-inner flex flex-col items-center justify-center p-10 text-center">
               {draft?.hasDocument ? (
-                <iframe
-                  src={`${resolvedApiBase() || 'http://localhost:3001/api'}/admin/pool-drafts/${draft.id}/file?token=${loadStoredToken() || ''}#toolbar=0`}
-                  className="w-full h-full absolute inset-0 border-none bg-white/50"
-                  title="Document"
-                />
+                <div className="space-y-4 max-w-sm">
+                  <FileText className="h-14 w-14 mx-auto text-muted-foreground/30" />
+                  <p className="text-sm text-muted-foreground">
+                    Preview disabled. Use Download to retrieve the compliance file with your authenticated session.
+                  </p>
+                </div>
               ) : (
-                <div className="flex flex-col items-center justify-center h-full text-muted-foreground/30 p-12 text-center">
+                <div className="flex flex-col items-center justify-center text-muted-foreground/30">
                   <FileText className="h-16 w-16 mb-4 opacity-10" />
                   <p className="text-sm font-medium">No document available for this pool</p>
                   <p className="text-xs mt-1">Check original draft specifications if applicable.</p>

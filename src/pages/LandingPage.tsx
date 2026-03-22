@@ -2,7 +2,8 @@ import { useWallet } from '@/contexts/WalletContext';
 import { Button } from '@/components/ui/button';
 import { Shield, Zap, ArrowRight, Wallet, Landmark } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { api } from '@/lib/api';
 import { useNavigate } from 'react-router-dom';
 import type { UserRole } from '@/contexts/WalletContext';
 import logo from '@/assets/oneyield-logo.png';
@@ -17,7 +18,40 @@ export default function LandingPage() {
   // Forms
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [email, setEmail] = useState('');
+  const [country, setCountry] = useState('');
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [usernameCheckPending, setUsernameCheckPending] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const checkUsername = useCallback(async (u: string) => {
+    const t = u.trim();
+    if (t.length < 3) {
+      setUsernameAvailable(null);
+      return;
+    }
+    setUsernameCheckPending(true);
+    try {
+      const { data } = await api.get<{ available: boolean }>('/auth/username-available', {
+        params: { username: t },
+      });
+      setUsernameAvailable(data.available);
+    } catch {
+      setUsernameAvailable(null);
+    } finally {
+      setUsernameCheckPending(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (credMode !== 'register') {
+      setUsernameAvailable(null);
+      return;
+    }
+    const t = setTimeout(() => void checkUsername(username), 400);
+    return () => clearTimeout(t);
+  }, [username, credMode, checkUsername]);
 
   const navigate = useNavigate();
 
@@ -45,7 +79,14 @@ export default function LandingPage() {
         const session = await loginUser(username, password);
         navigate(session.role === 'admin' ? '/admin' : '/borrower');
       } else {
-        await registerUser(username, password, 'borrower');
+        if (usernameAvailable === false) {
+          return;
+        }
+        await registerUser(username, password, 'borrower', {
+          displayName: displayName.trim(),
+          email: email.trim(),
+          country: country.trim(),
+        });
         navigate('/borrower');
       }
       setShowCredsModal(false);
@@ -212,7 +253,49 @@ export default function LandingPage() {
                 onChange={e => setUsername(e.target.value)}
                 className="w-full rounded-xl border border-border bg-background p-3 text-sm focus:border-primary focus:outline-none" 
               />
+              {credMode === 'register' && username.trim().length >= 3 && (
+                <p className={`text-xs ${usernameCheckPending ? 'text-muted-foreground' : usernameAvailable === false ? 'text-destructive' : usernameAvailable === true ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                  {usernameCheckPending ? 'Checking availability…' : usernameAvailable === false ? 'Username is already taken' : usernameAvailable === true ? 'Username is available' : null}
+                </p>
+              )}
             </div>
+            {credMode === 'register' && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Full name</label>
+                  <input
+                    required
+                    minLength={1}
+                    placeholder="Your name"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background p-3 text-sm focus:border-primary focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Email</label>
+                  <input
+                    required
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background p-3 text-sm focus:border-primary focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Country</label>
+                  <input
+                    required
+                    minLength={2}
+                    placeholder="e.g. United States or US"
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                    className="w-full rounded-xl border border-border bg-background p-3 text-sm focus:border-primary focus:outline-none"
+                  />
+                </div>
+              </>
+            )}
             <div className="space-y-2">
               <label className="text-sm font-medium">Password</label>
               <input 
@@ -228,7 +311,13 @@ export default function LandingPage() {
             
             <Button 
               type="submit" 
-              disabled={isSubmitting}
+              disabled={
+                isSubmitting ||
+                (credMode === 'register' &&
+                  (usernameCheckPending ||
+                    username.trim().length < 3 ||
+                    usernameAvailable !== true))
+              }
               className="w-full gradient-primary h-12 rounded-xl text-base font-semibold"
             >
               {isSubmitting ? 'Processing...' : (credMode === 'login' ? 'Login' : 'Register')}

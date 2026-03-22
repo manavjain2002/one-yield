@@ -12,7 +12,14 @@ async function bootstrap() {
 
   console.log(`Adding admin user: ${username}...`);
   try {
-    const result = await authService.registerWithCredentials(username, password, 'admin');
+    const result = await authService.registerWithCredentials({
+      username,
+      passwordPlain: password,
+      role: 'admin',
+      displayName: username,
+      email: `${username.replace(/[^a-zA-Z0-9]/g, '_')}@admin.local`,
+      country: 'US',
+    });
     console.log('Admin user added successfully:', result.username);
   } catch (err: any) {
     if (err.message === 'Username already taken') {

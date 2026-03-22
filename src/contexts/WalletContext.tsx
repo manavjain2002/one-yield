@@ -33,6 +33,7 @@ interface WalletContextType extends WalletState {
     username: string,
     passwordPlain: string,
     role: UserRole,
+    profile: { displayName: string; email: string; country: string },
   ) => Promise<{ accessToken: string; role: UserRole; username: string }>;
   setNeedsReAuth: (v: boolean) => void;
 }
@@ -268,13 +269,26 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const registerUser = useCallback(async (username: string, passwordPlain: string, role: UserRole) => {
+  const registerUser = useCallback(
+    async (
+      username: string,
+      passwordPlain: string,
+      role: UserRole,
+      profile: { displayName: string; email: string; country: string },
+    ) => {
     try {
       const { data } = await api.post<{
         accessToken: string;
         role: UserRole;
         username: string;
-      }>('/auth/register', { username, passwordPlain, role });
+      }>('/auth/register', {
+        username,
+        passwordPlain,
+        role,
+        displayName: profile.displayName,
+        email: profile.email,
+        country: profile.country,
+      });
       
       setAuthToken(data.accessToken);
       setState(prev => ({

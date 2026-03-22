@@ -6,8 +6,8 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { AddressLink } from '@/components/AddressLink';
 import { Loader2, FileText, Download, CheckCircle2, ArrowRight } from 'lucide-react';
-import { api, loadStoredToken } from '@/lib/api';
-import { resolvedApiBase } from '@/lib/api-env';
+import { api } from '@/lib/api';
+import { AdminDeployPoolButton } from '@/components/AdminDeployPoolButton';
 
 function DraftDetailView({ id }: { id: string }) {
   const { data: draft, isLoading } = useAdminPoolDraft(id);
@@ -72,22 +72,23 @@ function DraftDetailView({ id }: { id: string }) {
               This will create a new on-chain lending pool.
             </p>
           </div>
-          <Button
+          <AdminDeployPoolButton
             className="w-full gradient-primary font-bold h-11 rounded-xl shadow-md glow-primary"
-            disabled={actions.createPoolFromDraft.isPending || draft.indexed}
-            onClick={() => actions.createPoolFromDraft.mutate(draft)}
-          >
-            {actions.createPoolFromDraft.isPending ? "Deploying..." : draft.indexed ? "Already Deployed" : "Create Pool On-Chain"}
-          </Button>
+            draft={draft}
+            isPending={actions.createPoolFromDraft.isPending}
+            onDeploy={(d) => actions.createPoolFromDraft.mutate(d)}
+            labelConnected="Create Pool On-Chain"
+          />
         </div>
       </div>
 
-      {/* Preview Sub-column */}
+      {/* Compliance document (download only — no in-app preview) */}
       <div className="flex flex-col gap-3 h-full overflow-hidden">
         <div className="flex items-center justify-between px-1">
-          <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Document Preview</h4>
+          <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Compliance document</h4>
           {draft.hasDocument && (
-            <button 
+            <button
+              type="button"
               onClick={() => void downloadFile()}
               className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1"
             >
@@ -95,16 +96,16 @@ function DraftDetailView({ id }: { id: string }) {
             </button>
           )}
         </div>
-        <div className="flex-1 glass-card rounded-2xl border border-border/50 bg-secondary/5 overflow-hidden relative min-h-[400px]">
+        <div className="flex-1 glass-card rounded-2xl border border-border/50 bg-secondary/5 overflow-hidden relative min-h-[200px] flex flex-col items-center justify-center p-8 text-center">
           {draft.hasDocument ? (
-            <iframe
-              src={`${resolvedApiBase() || 'http://localhost:3001/api'}/admin/pool-drafts/${draft.id}/file?token=${loadStoredToken() || ''}#toolbar=0`}
-              className="w-full h-full absolute inset-0 border-none bg-white/50"
-              title="Document"
-            />
-
+            <div className="space-y-3 max-w-sm">
+              <FileText className="h-10 w-10 mx-auto text-muted-foreground/40" />
+              <p className="text-xs text-muted-foreground">
+                Preview removed. Use <span className="font-semibold text-primary">Download</span> to open the file with a secure, authenticated request.
+              </p>
+            </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground/40 p-8 text-center bg-secondary/10">
+            <div className="flex flex-col items-center text-muted-foreground/40">
               <FileText className="h-12 w-12 mb-3 opacity-20" />
               <p className="text-xs">No compliance document attached</p>
             </div>

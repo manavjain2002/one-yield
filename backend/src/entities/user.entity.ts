@@ -28,6 +28,15 @@ export class UserEntity {
   @Column({ type: 'varchar', length: 16 })
   role: AppUserRole;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  displayName: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  email: string | null;
+
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  country: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

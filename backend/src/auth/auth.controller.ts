@@ -1,6 +1,12 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
-import { IsIn, IsString, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsIn,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser, JwtUser } from './current-user.decorator';
@@ -18,6 +24,7 @@ class LoginDto {
 class RegisterDto {
   @IsString()
   @MinLength(3)
+  @MaxLength(64)
   username: string;
 
   @IsString()
@@ -26,6 +33,20 @@ class RegisterDto {
 
   @IsIn(['borrower', 'lender', 'manager'])
   role: 'borrower' | 'lender' | 'manager';
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(255)
+  displayName: string;
+
+  @IsEmail()
+  @MaxLength(255)
+  email: string;
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(128)
+  country: string;
 }
 
 class ChallengeDto {
@@ -80,9 +101,21 @@ export class AuthController {
     return this.auth.loginWithCredentials(dto.username, dto.passwordPlain);
   }
 
+  @Get('username-available')
+  usernameAvailable(@Query('username') username: string) {
+    return this.auth.checkUsernameAvailable(username ?? '');
+  }
+
   @Post('register')
   register(@Body() dto: RegisterDto) {
-    return this.auth.registerWithCredentials(dto.username, dto.passwordPlain, dto.role);
+    return this.auth.registerWithCredentials({
+      username: dto.username,
+      passwordPlain: dto.passwordPlain,
+      role: dto.role,
+      displayName: dto.displayName,
+      email: dto.email.trim().toLowerCase(),
+      country: dto.country.trim(),
+    });
   }
 
   @Post('refresh')

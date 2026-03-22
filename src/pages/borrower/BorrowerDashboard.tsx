@@ -69,6 +69,15 @@ export default function BorrowerDashboard() {
   };
 
   const activePools = pools.filter(p => p.status === 'active' || p.status === 'pending');
+  const poolTokenLabel = (p: Pool) => p.poolTokenName || 'USDC';
+  const summaryTokenLabel =
+    activePools.length === 0
+      ? 'USDC'
+      : [...new Set(activePools.map(poolTokenLabel))].length === 1
+        ? poolTokenLabel(activePools[0])
+        : 'USDC';
+  const fmtTok = (n: number) => `${Math.round(n).toLocaleString()} ${summaryTokenLabel}`;
+
   const totalPrincipal = pools.reduce((s, p) => s + Math.max(0, p.totalReceived - p.totalRepaid), 0);
   const totalCoupon = pools.reduce((s, p) => { const pr = Math.max(0, p.totalReceived - p.totalRepaid); return s + pr * p.apy / 200; }, 0);
   const totalOutstanding = totalPrincipal + totalCoupon;
@@ -103,21 +112,21 @@ export default function BorrowerDashboard() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Tooltip>
             <TooltipTrigger asChild>
-              <div><MetricCard title="Outstanding Principal" value={`$${Math.round(totalPrincipal).toLocaleString()}`} icon={<DollarSign className="h-5 w-5" />} /></div>
+              <div><MetricCard title="Outstanding Principal" value={fmtTok(totalPrincipal)} icon={<DollarSign className="h-5 w-5" />} /></div>
             </TooltipTrigger>
-            <TooltipContent><p className="max-w-xs text-xs">Total amount borrowed minus total repaid across all active pools</p></TooltipContent>
+            <TooltipContent><p className="max-w-xs text-xs">Total pool token amount borrowed minus repaid across active pools ({summaryTokenLabel})</p></TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div><MetricCard title="Outstanding Coupon" value={`$${Math.round(totalCoupon).toLocaleString()}`} icon={<TrendingUp className="h-5 w-5" />} /></div>
+              <div><MetricCard title="Outstanding Coupon" value={fmtTok(totalCoupon)} icon={<TrendingUp className="h-5 w-5" />} /></div>
             </TooltipTrigger>
-            <TooltipContent><p className="max-w-xs text-xs">Estimated interest accrued on outstanding principal</p></TooltipContent>
+            <TooltipContent><p className="max-w-xs text-xs">Estimated interest on outstanding principal, in {summaryTokenLabel}</p></TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div><MetricCard title="Total Debt" value={`$${Math.round(totalOutstanding).toLocaleString()}`} icon={<AlertTriangle className="h-5 w-5" />} /></div>
+              <div><MetricCard title="Total Debt" value={fmtTok(totalOutstanding)} icon={<AlertTriangle className="h-5 w-5" />} /></div>
             </TooltipTrigger>
-            <TooltipContent><p className="max-w-xs text-xs">Sum of principal and coupon obligations across all pools</p></TooltipContent>
+            <TooltipContent><p className="max-w-xs text-xs">Principal plus estimated coupon, in {summaryTokenLabel}</p></TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -144,6 +153,7 @@ export default function BorrowerDashboard() {
               const poolAum = aumMap[pool.id] ?? 0n;
               const hasAum = poolAum > 0n;
               const nominalPoolSize = Number(pool.poolSize) / 1e6;
+              const tok = poolTokenLabel(pool);
 
               return (
                 <div key={pool.id} className="glass-card rounded-2xl overflow-hidden border border-border/40 transition-all hover:border-primary/20 group">
@@ -161,7 +171,7 @@ export default function BorrowerDashboard() {
                     <div className="flex flex-wrap items-center gap-8 flex-1 justify-evenly sm:justify-start text-sm">
                       <div className="text-center sm:text-left min-w-[100px]">
                         <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-0.5">Pool Size</p>
-                        <p className="font-bold">${nominalPoolSize.toLocaleString()}</p>
+                        <p className="font-bold">{nominalPoolSize.toLocaleString()} {tok}</p>
                       </div>
                       <div className="text-center sm:text-left min-w-[100px]">
                         <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-0.5">APR</p>
@@ -173,7 +183,7 @@ export default function BorrowerDashboard() {
                       </div>
                       <div className="text-center sm:text-left min-w-[100px]">
                         <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-0.5">Outstanding</p>
-                        <p className="font-bold text-destructive">${Math.round(outstanding).toLocaleString()}</p>
+                        <p className="font-bold text-destructive">{Math.round(outstanding).toLocaleString()} {tok}</p>
                       </div>
                     </div>
 
@@ -210,15 +220,15 @@ export default function BorrowerDashboard() {
                         </div>
                         <div className="space-y-1">
                           <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Total Funded</p>
-                          <p className="text-sm font-bold">${pool.totalReceived.toLocaleString()}</p>
+                          <p className="text-sm font-bold">{pool.totalReceived.toLocaleString()} {tok}</p>
                         </div>
                         <div className="space-y-1">
                           <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Total Repaid</p>
-                          <p className="text-sm font-bold text-success">${pool.totalRepaid.toLocaleString()}</p>
+                          <p className="text-sm font-bold text-success">{pool.totalRepaid.toLocaleString()} {tok}</p>
                         </div>
                         <div className="space-y-1">
                           <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Pool Size</p>
-                          <p className="text-sm font-medium">${nominalPoolSize.toLocaleString()}</p>
+                          <p className="text-sm font-medium">{nominalPoolSize.toLocaleString()} {tok}</p>
                         </div>
                         <div className="space-y-1">
                           <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">APR</p>

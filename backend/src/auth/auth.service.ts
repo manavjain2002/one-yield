@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -55,6 +56,20 @@ export class AuthService implements OnModuleInit {
     for (const [id, c] of this.challenges) {
       if (c.expires < now) this.challenges.delete(id);
     }
+  }
+
+  /** Normalize credential usernames for storage and lookup. */
+  normalizeUsername(raw: string): string {
+    return raw.trim().toLowerCase();
+  }
+
+  async checkUsernameAvailable(raw: string): Promise<{ available: boolean }> {
+    const username = this.normalizeUsername(raw);
+    if (username.length < 3) {
+      return { available: false };
+    }
+    const existing = await this.users.findOne({ where: { username } });
+    return { available: !existing };
   }
 
   createChallenge(walletAddress: string) {
@@ -149,16 +164,30 @@ export class AuthService implements OnModuleInit {
     };
   }
 
-  async registerWithCredentials(username: string, passwordPlain: string, role: UserEntity['role']) {
+  async registerWithCredentials(params: {
+    username: string;
+    passwordPlain: string;
+    role: UserEntity['role'];
+    displayName: string;
+    email: string;
+    country: string;
+  }) {
+    const username = this.normalizeUsername(params.username);
+    if (username.length < 3) {
+      throw new BadRequestException('Invalid username');
+    }
     const existing = await this.users.findOne({ where: { username } });
     if (existing) {
       throw new UnauthorizedException('Username already taken');
     }
-    const passwordHash = await bcrypt.hash(passwordPlain, 10);
+    const passwordHash = await bcrypt.hash(params.passwordPlain, 10);
     const user = this.users.create({
       username,
       passwordHash,
-      role,
+      role: params.role,
+      displayName: params.displayName.trim(),
+      email: params.email.trim().toLowerCase(),
+      country: params.country.trim(),
     });
     await this.users.save(user);
 
@@ -190,7 +219,8 @@ export class AuthService implements OnModuleInit {
   }
 
   async loginWithCredentials(username: string, passwordPlain: string) {
-    const user = await this.users.findOne({ where: { username } });
+    const normalized = this.normalizeUsername(username);
+    const user = await this.users.findOne({ where: { username: normalized } });
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException('Invalid credentials');
     }

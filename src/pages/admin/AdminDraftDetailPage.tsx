@@ -4,8 +4,8 @@ import { useAdminPoolDraft } from '@/hooks/useAdminPoolDrafts';
 import { useAdminPoolActions } from '@/hooks/useAdminPoolActions';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
-import { resolvedApiBase } from '@/lib/api-env';
-import { Loader2 } from 'lucide-react';
+import { AdminDeployPoolButton } from '@/components/AdminDeployPoolButton';
+import { Loader2, FileText } from 'lucide-react';
 import { AddressLink } from '@/components/AddressLink';
 
 export default function AdminDraftDetailPage() {
@@ -113,38 +113,37 @@ export default function AdminDraftDetailPage() {
                 </p>
               </div>
               
-              <Button
+              <AdminDeployPoolButton
                 className="w-full gradient-primary font-bold h-12 rounded-xl shadow-lg glow-primary"
-                disabled={createPoolFromDraft.isPending}
-                onClick={() => createPoolFromDraft.mutate(draft)}
-              >
-                {createPoolFromDraft.isPending ? (
-                  <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Deploying...</span>
-                ) : 'Create Pool'}
-              </Button>
+                draft={draft}
+                isPending={createPoolFromDraft.isPending}
+                onDeploy={(d) => createPoolFromDraft.mutate(d)}
+                labelConnected="Create Pool on Chain"
+              />
             </div>
           </div>
 
-          {/* Right Column: Preview */}
+          {/* Right Column: document download only */}
           <div className="lg:col-span-3 space-y-4">
             <div className="flex items-center justify-between px-2">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Compliance Document</h3>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Compliance document</h3>
               {draft.hasDocument && (
                 <Button variant="outline" size="sm" onClick={() => void downloadFile()} className="h-8 text-xs gap-2">
-                  Download Original
+                  Download original
                 </Button>
               )}
             </div>
 
-            <div className="glass-card rounded-2xl border border-border/50 overflow-hidden bg-secondary/5 min-h-[600px] flex flex-col items-center justify-center relative">
+            <div className="glass-card rounded-2xl border border-border/50 overflow-hidden bg-secondary/5 min-h-[320px] flex flex-col items-center justify-center p-8 text-center">
               {draft.hasDocument ? (
-                <iframe
-                  src={`${resolvedApiBase() || 'http://localhost:3001/api'}/admin/pool-drafts/${draftId}/file#toolbar=0`}
-                  className="w-full h-full absolute inset-0 border-none"
-                  title="Document Preview"
-                />
+                <div className="space-y-4 max-w-md">
+                  <FileText className="h-14 w-14 mx-auto text-muted-foreground/35" />
+                  <p className="text-sm text-muted-foreground">
+                    In-app preview is disabled. Download opens the file using your current session token.
+                  </p>
+                </div>
               ) : (
-                <div className="text-center p-8 space-y-2">
+                <div className="text-center space-y-2">
                   <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
                     <Loader2 className="h-8 w-8 text-muted-foreground/40" />
                   </div>
