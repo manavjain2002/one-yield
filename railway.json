@@ -6,7 +6,7 @@
       "root": "/",
       "build": {
         "builder": "DOCKER",
-        "dockerfilePath": "Dockerfile.serve"
+        "dockerfilePath": "Dockerfile"
       },
       "deploy": {
         "healthcheckPath": "/",

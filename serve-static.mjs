@@ -14,7 +14,7 @@ function assertDistReady() {
   const indexPath = path.join(dist, 'index.html');
   if (!fs.existsSync(dist)) {
     console.error(`[static] FATAL: dist directory missing: ${dist}`);
-    console.error('[static] Fix: ensure Dockerfile.serve copies /app/dist from the Vite build stage.');
+    console.error('[static] Fix: ensure Dockerfile copies /app/dist from the Vite build stage.');
     process.exit(1);
   }
   if (!fs.existsSync(indexPath)) {

@@ -1,3 +1,4 @@
+# Production static hosting for Railway: Node listens on 0.0.0.0:$PORT (see serve-static.mjs).
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
@@ -5,12 +6,11 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginx:stable-alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY docker-entrypoint-frontend.sh /docker-entrypoint-frontend.sh
-RUN chmod +x /docker-entrypoint-frontend.sh
-# Railway sets PORT; nginx must listen on that port (default 8080 for local/docker).
-ENV PORT=8080
+FROM node:20-alpine
+WORKDIR /app
+COPY --from=builder /app/dist ./dist
+COPY serve-static.mjs ./
+ENV NODE_ENV=production
+# Railway injects PORT at runtime — do not pin PORT in Railway UI for the frontend service.
 EXPOSE 8080
-ENTRYPOINT ["/docker-entrypoint-frontend.sh"]
+CMD ["node", "serve-static.mjs"]
