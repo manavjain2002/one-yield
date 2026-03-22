@@ -35,9 +35,8 @@ function DraftDetailView({ id }: { id: string }) {
   if (!draft) return null;
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 h-full overflow-hidden animate-in fade-in slide-in-from-right-4 duration-300">
-      {/* Details Sub-column */}
-      <div className="space-y-4 overflow-y-auto pr-1 custom-scrollbar">
+    <div className="flex flex-col gap-6 h-full overflow-y-auto pr-1 custom-scrollbar animate-in fade-in slide-in-from-right-4 duration-300">
+      <div className="space-y-4">
         <div className="glass-card rounded-2xl border border-border/50 overflow-hidden divide-y divide-border/10">
           <div className="px-4 py-3 bg-secondary/10 flex justify-between items-center text-xs font-bold uppercase tracking-wider text-muted-foreground">
             Specifications
@@ -80,36 +79,27 @@ function DraftDetailView({ id }: { id: string }) {
             labelConnected="Create Pool On-Chain"
           />
         </div>
-      </div>
 
-      {/* Compliance document (download only — no in-app preview) */}
-      <div className="flex flex-col gap-3 h-full overflow-hidden">
-        <div className="flex items-center justify-between px-1">
-          <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Compliance document</h4>
-          {draft.hasDocument && (
-            <button
-              type="button"
-              onClick={() => void downloadFile()}
-              className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1"
-            >
-              <Download className="h-3 w-3" /> Download
-            </button>
-          )}
-        </div>
-        <div className="flex-1 glass-card rounded-2xl border border-border/50 bg-secondary/5 overflow-hidden relative min-h-[200px] flex flex-col items-center justify-center p-8 text-center">
+        <div className="glass-card rounded-xl border border-border/50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <FileText className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">Compliance document</p>
+              {draft.hasDocument ? (
+                <p className="text-xs text-muted-foreground truncate" title={draft.documentOriginalName ?? ''}>
+                  {draft.documentOriginalName ?? 'Attached file'}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">No file attached to this draft.</p>
+              )}
+            </div>
+          </div>
           {draft.hasDocument ? (
-            <div className="space-y-3 max-w-sm">
-              <FileText className="h-10 w-10 mx-auto text-muted-foreground/40" />
-              <p className="text-xs text-muted-foreground">
-                Preview removed. Use <span className="font-semibold text-primary">Download</span> to open the file with a secure, authenticated request.
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center text-muted-foreground/40">
-              <FileText className="h-12 w-12 mb-3 opacity-20" />
-              <p className="text-xs">No compliance document attached</p>
-            </div>
-          )}
+            <Button type="button" size="sm" className="shrink-0 gap-2" onClick={() => void downloadFile()}>
+              <Download className="h-4 w-4" />
+              Download
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>

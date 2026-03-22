@@ -50,7 +50,10 @@ export function TransactionList({ transactions, isLoading }: TransactionListProp
       case 'repay':
       case 'repayment': return <RefreshCw className="h-4 w-4 text-primary" />;
       case 'deploy':
-      case 'release': return <Rocket className="h-4 w-4 text-violet-400" />;
+      case 'release':
+      case 'deploy_funds':
+      case 'create_pool':
+      case 'activate': return <Rocket className="h-4 w-4 text-violet-400" />;
       case 'sweep':
       case 'transfer':
       case 'send_to_reserve': return <Layers className="h-4 w-4 text-blue-400" />;

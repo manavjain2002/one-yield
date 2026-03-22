@@ -1,17 +1,16 @@
 import { useWallet } from '@/contexts/WalletContext';
 import { Button } from '@/components/ui/button';
-import { Shield, Zap, ArrowRight, Wallet, Landmark } from 'lucide-react';
+import { Shield, Zap, Wallet, Landmark } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { useNavigate } from 'react-router-dom';
-import type { UserRole } from '@/contexts/WalletContext';
+import { useNavigate, useLocation } from 'react-router-dom';
 import logo from '@/assets/oneyield-logo.png';
 
 export default function LandingPage() {
-  const { isConnected, address, accessToken, connect, selectRole, loginUser, registerUser } = useWallet();
+  const { isConnected, address, accessToken, role, authHydrated, connect, loginUser, registerUser } =
+    useWallet();
   const [showWeb3Modal, setShowWeb3Modal] = useState(false);
-  const [showWeb3RoleModal, setShowWeb3RoleModal] = useState(false);
   const [showCredsModal, setShowCredsModal] = useState(false);
   const [credMode, setCredMode] = useState<'login' | 'register'>('login');
   
@@ -54,6 +53,15 @@ export default function LandingPage() {
   }, [username, credMode, checkUsername]);
 
   const navigate = useNavigate();
+  const location = useLocation();
+
+  /** Logged-in users should not stay on marketing home (fixes credential Web3 role screen + refresh bounce). */
+  useEffect(() => {
+    if (!authHydrated || location.pathname !== '/') return;
+    if (!accessToken || !role) return;
+    const home = role === 'admin' ? '/admin' : `/${role}`;
+    navigate(home, { replace: true });
+  }, [authHydrated, location.pathname, accessToken, role, navigate]);
 
   const handleConnectMetaMask = async () => {
     try {
@@ -63,12 +71,6 @@ export default function LandingPage() {
     } catch {
       setShowWeb3Modal(false);
     }
-  };
-
-  const handleRoleSelect = async (role: UserRole) => {
-    await selectRole(role);
-    setShowWeb3RoleModal(false);
-    navigate(`/${role}`);
   };
 
   const handleCredsSubmit = async (e: React.FormEvent) => {
@@ -113,11 +115,6 @@ export default function LandingPage() {
         </div>
       </div>
     );
-  }
-
-  // 2. If connected (Web3 token or ID/Pass) but no role selected, show role selection
-  if (isConnected && !showWeb3RoleModal) {
-    return <RoleSelection onSelect={handleRoleSelect} isWeb3={!!address} />;
   }
 
   return (
@@ -189,34 +186,6 @@ export default function LandingPage() {
           Lenders & Pool Managers use Web3. Borrowers & Admin use ID/Password.
         </p>
       </div>
-
-      {/* Web3 Role Selection Modal */}
-      <Dialog open={showWeb3RoleModal} onOpenChange={setShowWeb3RoleModal}>
-        <DialogContent className="glass-card border-border/50 sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-center text-xl">Select Your Web3 Role</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-3 py-4">
-            {[
-              { role: 'lender' as UserRole, title: 'Lender', desc: 'Deposit funds into pools and earn yield', icon: '💰' },
-              { role: 'manager' as UserRole, title: 'Pool Manager', desc: 'Manage pool operations and fund flows', icon: '⚙️' },
-            ].map(r => (
-              <button
-                key={r.role}
-                onClick={() => handleRoleSelect(r.role)}
-                className="flex items-center gap-4 rounded-2xl border border-border bg-secondary/50 p-5 text-left transition-all hover:border-primary/50 hover:bg-secondary"
-              >
-                <span className="text-3xl">{r.icon}</span>
-                <div>
-                  <p className="font-semibold text-foreground">{r.title}</p>
-                  <p className="text-sm text-muted-foreground">{r.desc}</p>
-                </div>
-                <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
-              </button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Credentials Modal (Borrowers/Admin) */}
       <Dialog open={showCredsModal} onOpenChange={setShowCredsModal}>
@@ -325,40 +294,6 @@ export default function LandingPage() {
           </form>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function RoleSelection({ onSelect, isWeb3 }: { onSelect: (role: UserRole) => void; isWeb3?: boolean }) {
-  const roles = [
-    { role: 'lender' as UserRole, title: 'Lender', desc: 'Deposit funds into pools and earn yield', icon: '💰' },
-    { role: 'manager' as UserRole, title: 'Pool Manager', desc: 'Manage pool operations and fund flows', icon: '⚙️' },
-  ];
-
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
-      <div className="w-full max-w-lg space-y-6">
-        <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold">Welcome to OneYield</h1>
-          <p className="text-muted-foreground">Select your role to continue</p>
-        </div>
-        <div className="grid gap-3">
-          {roles.map(r => (
-            <button
-              key={r.role}
-              onClick={() => onSelect(r.role)}
-              className="flex items-center gap-4 rounded-2xl border border-border bg-card p-5 text-left transition-all hover:border-primary/50 hover:bg-secondary"
-            >
-              <span className="text-3xl">{r.icon}</span>
-              <div>
-                <p className="font-semibold text-foreground">{r.title}</p>
-                <p className="text-sm text-muted-foreground">{r.desc}</p>
-              </div>
-              <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

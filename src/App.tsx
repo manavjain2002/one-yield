@@ -37,6 +37,7 @@ import {
 } from '@rainbow-me/rainbowkit/wallets';
 import { WagmiProvider, http, createConfig } from 'wagmi';
 import { wagmiTargetChain } from '@/lib/wagmi-target-chain';
+import { Loader2 } from 'lucide-react';
 
 const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || '';
 
@@ -76,9 +77,16 @@ const config = createConfig({
 const queryClient = new QueryClient();
 
 function ProtectedRoute({ children, allowedRole }: { children: React.ReactNode; allowedRole?: string }) {
-  const { isConnected, role, accessToken } = useWallet();
+  const { isConnected, role, accessToken, authHydrated } = useWallet();
   const bypassJwt =
     !isApiConfigured() || import.meta.env.VITE_USE_MOCK_WALLET === "true";
+  if (!authHydrated) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center text-muted-foreground">
+        <Loader2 className="h-8 w-8 animate-spin" aria-label="Loading session" />
+      </div>
+    );
+  }
   if (!isConnected) return <Navigate to="/" replace />;
   if (!bypassJwt && !accessToken) return <Navigate to="/" replace />;
   if (allowedRole && role !== allowedRole) return <Navigate to="/" replace />;

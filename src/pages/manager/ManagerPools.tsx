@@ -113,12 +113,28 @@ export default function ManagerPools() {
   }));
 
   const getFilteredHistory = (tab: string) => {
+    const t = (s: string) => s.toLowerCase();
     switch (tab) {
-      case 'deposits': return txHistory.filter(tx => ['deposit'].includes(tx.type.toLowerCase()));
-      case 'withdrawals': return txHistory.filter(tx => ['withdraw', 'redeem'].includes(tx.type.toLowerCase()));
-      case 'repayments': return txHistory.filter(tx => ['repay', 'repayment'].includes(tx.type.toLowerCase()));
-      case 'deployments': return txHistory.filter(tx => ['deploy', 'release', 'deploy_funds'].includes(tx.type.toLowerCase()));
-      default: return txHistory;
+      case 'deposits':
+        return txHistory.filter((tx) => t(tx.type) === 'deposit');
+      case 'withdrawals':
+        return txHistory.filter((tx) => ['withdraw', 'redeem'].includes(t(tx.type)));
+      case 'repayments':
+        return txHistory.filter((tx) => ['repay', 'repayment'].includes(t(tx.type)));
+      case 'deployments':
+        return txHistory.filter((tx) =>
+          [
+            'deploy_funds',
+            'send_to_reserve',
+            'create_pool',
+            'activate',
+            'pause',
+            'unpause',
+            'aum_update',
+          ].includes(t(tx.type)),
+        );
+      default:
+        return txHistory;
     }
   };
 

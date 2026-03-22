@@ -96,17 +96,21 @@ export class PoolsService {
   }
 
   async getTransactions(idOrContract: string) {
-    let addr = idOrContract;
     const pool = await this.pools.findOne({
       where: [{ id: idOrContract }, { contractAddress: idOrContract }],
     });
     if (pool) {
-      addr = pool.contractAddress;
-    } else {
-      const draft = await this.drafts.findOne({ where: { id: idOrContract } });
-      if (draft && draft.txHash) {
-        addr = draft.txHash;
-      }
+      return this.txs.find({
+        where: [{ poolAddress: pool.contractAddress }, { poolId: pool.id }],
+        order: { createdAt: 'DESC' },
+        take: 200,
+      });
+    }
+
+    let addr = idOrContract;
+    const draft = await this.drafts.findOne({ where: { id: idOrContract } });
+    if (draft && draft.txHash) {
+      addr = draft.txHash;
     }
 
     return this.txs.find({

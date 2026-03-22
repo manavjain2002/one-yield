@@ -22,6 +22,8 @@ interface WalletState {
 }
 
 interface WalletContextType extends WalletState {
+  /** True after the first sync from localStorage (avoid ProtectedRoute redirect before JWT hydrate). */
+  authHydrated: boolean;
   connect: () => Promise<void>;
   disconnect: () => void;
   selectRole: (role: UserRole) => Promise<void>;
@@ -71,6 +73,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const { switchChainAsync } = useSwitchChain();
   const web3LoginInFlight = useRef(false);
 
+  const [authHydrated, setAuthHydrated] = useState(false);
+
   const [state, setState] = useState<WalletState>({
     isConnected: false,
     address: null,
@@ -98,8 +102,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           role: payload.role || null,
           isConnected: true,
         }));
+      } else {
+        setAuthToken(null);
       }
     }
+    setAuthHydrated(true);
   }, []);
 
   // Sync state with wagmi
@@ -343,7 +350,16 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, []);
   return (
     <WalletContext.Provider
-      value={{ ...state, connect, disconnect, selectRole, loginUser, registerUser, setNeedsReAuth }}
+      value={{
+        ...state,
+        authHydrated,
+        connect,
+        disconnect,
+        selectRole,
+        loginUser,
+        registerUser,
+        setNeedsReAuth,
+      }}
     >
       {children}
     </WalletContext.Provider>

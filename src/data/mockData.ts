@@ -50,9 +50,25 @@ export interface LenderPosition {
   poolTokenAddress?: string;
 }
 
+/** Aligns with backend `TxType` for pool-scoped history. */
+export type TxHistoryType =
+  | 'borrow'
+  | 'repay'
+  | 'deposit'
+  | 'withdraw'
+  | 'transfer'
+  | 'create_pool'
+  | 'deploy_funds'
+  | 'activate'
+  | 'pause'
+  | 'unpause'
+  | 'send_to_reserve'
+  | 'aum_update'
+  | 'other';
+
 export interface TxHistory {
   id: string;
-  type: 'borrow' | 'repay' | 'deposit' | 'withdraw' | 'transfer' | 'create_pool' | 'deploy_funds' | 'activate' | 'pause';
+  type: TxHistoryType;
   amount: number;
   token: string;
   timestamp: string;

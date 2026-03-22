@@ -5,7 +5,7 @@ import { useAdminPoolActions } from '@/hooks/useAdminPoolActions';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { AdminDeployPoolButton } from '@/components/AdminDeployPoolButton';
-import { Loader2, FileText } from 'lucide-react';
+import { Loader2, FileText, Download } from 'lucide-react';
 import { AddressLink } from '@/components/AddressLink';
 
 export default function AdminDraftDetailPage() {
@@ -71,9 +71,8 @@ export default function AdminDraftDetailPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-          {/* Left Column: Details & Actions */}
-          <div className="lg:col-span-2 space-y-6">
+        <div className="max-w-3xl space-y-6">
+          <div className="space-y-6">
             <div className="glass-card rounded-2xl border border-border/50 overflow-hidden divide-y divide-border/10">
               <div className="px-5 py-4 bg-secondary/10">
                 <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Pool Specifications</h3>
@@ -121,35 +120,27 @@ export default function AdminDraftDetailPage() {
                 labelConnected="Create Pool on Chain"
               />
             </div>
-          </div>
 
-          {/* Right Column: document download only */}
-          <div className="lg:col-span-3 space-y-4">
-            <div className="flex items-center justify-between px-2">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Compliance document</h3>
-              {draft.hasDocument && (
-                <Button variant="outline" size="sm" onClick={() => void downloadFile()} className="h-8 text-xs gap-2">
-                  Download original
-                </Button>
-              )}
-            </div>
-
-            <div className="glass-card rounded-2xl border border-border/50 overflow-hidden bg-secondary/5 min-h-[320px] flex flex-col items-center justify-center p-8 text-center">
+            <div className="glass-card rounded-xl border border-border/50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <FileText className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">Compliance document</p>
+                  {draft.hasDocument ? (
+                    <p className="text-xs text-muted-foreground truncate" title={draft.documentOriginalName ?? ''}>
+                      {draft.documentOriginalName ?? 'Attached file'}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">No file was submitted for this draft.</p>
+                  )}
+                </div>
+              </div>
               {draft.hasDocument ? (
-                <div className="space-y-4 max-w-md">
-                  <FileText className="h-14 w-14 mx-auto text-muted-foreground/35" />
-                  <p className="text-sm text-muted-foreground">
-                    In-app preview is disabled. Download opens the file using your current session token.
-                  </p>
-                </div>
-              ) : (
-                <div className="text-center space-y-2">
-                  <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Loader2 className="h-8 w-8 text-muted-foreground/40" />
-                  </div>
-                  <p className="text-sm font-medium text-muted-foreground">No document provided for this draft</p>
-                </div>
-              )}
+                <Button type="button" size="sm" className="shrink-0 gap-2" onClick={() => void downloadFile()}>
+                  <Download className="h-4 w-4" />
+                  Download
+                </Button>
+              ) : null}
             </div>
           </div>
         </div>

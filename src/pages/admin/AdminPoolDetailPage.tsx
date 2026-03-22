@@ -14,7 +14,6 @@ import {
   Play, 
   XCircle, 
   ChevronLeft,
-  ExternalLink
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -124,9 +123,8 @@ export default function AdminPoolDetailPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Details Column */}
-          <div className="lg:col-span-5 space-y-6">
+        <div className="grid grid-cols-1 gap-6 items-start max-w-4xl">
+          <div className="space-y-6">
             <div className="glass-card rounded-2xl border border-border/50 overflow-hidden divide-y divide-border/10">
               <div className="px-5 py-4 bg-secondary/10 flex justify-between items-center text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Pool Specifications
@@ -152,44 +150,36 @@ export default function AdminPoolDetailPage() {
             {pool.draftId && (
               <div className="p-5 rounded-2xl border border-primary/20 bg-primary/5">
                 <h4 className="text-sm font-bold text-primary flex items-center gap-2 mb-2">
-                  <FileText className="h-4 w-4" /> Original Draft Information
+                  <FileText className="h-4 w-4" /> Original draft
                 </h4>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  This pool was deployed from draft <span className="font-mono text-[10px]">{pool.draftId}</span>. 
-                  Below is the compliance document submitted during the proposal.
+                  Deployed from draft <span className="font-mono text-[10px]">{pool.draftId}</span>.
                 </p>
               </div>
             )}
-          </div>
 
-          {/* Document Column */}
-          <div className="lg:col-span-7 flex flex-col gap-3">
-             <div className="flex items-center justify-between px-1">
-              <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Compliance Document</h4>
-              {draft?.hasDocument && (
-                <button 
-                  onClick={() => void downloadFile()}
-                  className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1"
-                >
-                  <Download className="h-3 w-3" /> Download
-                </button>
-              )}
-            </div>
-            <div className="aspect-[3/4] glass-card rounded-2xl border border-border/50 bg-secondary/5 overflow-hidden relative shadow-inner flex flex-col items-center justify-center p-10 text-center">
+            <div className="glass-card rounded-xl border border-border/50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <FileText className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">Compliance document</p>
+                  {draft?.hasDocument ? (
+                    <p className="text-xs text-muted-foreground truncate" title={draft.documentOriginalName ?? ''}>
+                      {draft.documentOriginalName ?? 'Attached file'}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      No file on record{pool.draftId ? ' for this draft.' : '.'}
+                    </p>
+                  )}
+                </div>
+              </div>
               {draft?.hasDocument ? (
-                <div className="space-y-4 max-w-sm">
-                  <FileText className="h-14 w-14 mx-auto text-muted-foreground/30" />
-                  <p className="text-sm text-muted-foreground">
-                    Preview disabled. Use Download to retrieve the compliance file with your authenticated session.
-                  </p>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center text-muted-foreground/30">
-                  <FileText className="h-16 w-16 mb-4 opacity-10" />
-                  <p className="text-sm font-medium">No document available for this pool</p>
-                  <p className="text-xs mt-1">Check original draft specifications if applicable.</p>
-                </div>
-              )}
+                <Button type="button" size="sm" variant="secondary" className="shrink-0 gap-2" onClick={() => void downloadFile()}>
+                  <Download className="h-4 w-4" />
+                  Download
+                </Button>
+              ) : null}
             </div>
           </div>
         </div>
