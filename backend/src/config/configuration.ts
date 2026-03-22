@@ -11,8 +11,10 @@ export default () => ({
     name: process.env.DATABASE_NAME ?? 'oneyield',
   },
   redis: {
-    host: process.env.REDIS_HOST ?? 'localhost',
-    port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
+    host: process.env.REDISHOST ?? process.env.REDIS_HOST ?? 'localhost',
+    port: parseInt(process.env.REDISPORT ?? process.env.REDIS_PORT ?? '6379', 10),
+    username: process.env.REDISUSER,
+    password: process.env.REDISPASSWORD ?? process.env.REDIS_PASSWORD,
   },
   blockchain: {
     network: process.env.BLOCKCHAIN_NETWORK ?? 'testnet',
