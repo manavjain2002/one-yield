@@ -7,7 +7,8 @@ type ApiPosition = {
   poolId: string;
   lenderAddress: string;
   lpTokenBalance: string;
-  depositedAmount: string;
+   depositedAmount: string;
+  withdrawnAmount: string;
   currentValue: string;
   yieldEarned: string;
   pool?: { name: string; contractAddress: string; poolTokenAddress: string };
@@ -20,6 +21,7 @@ function mapPosition(p: ApiPosition): LenderPosition {
     contractAddress: p.pool?.contractAddress,
     poolTokenAddress: p.pool?.poolTokenAddress,
     deposited: (Number(p.depositedAmount) || 0) / 1e6,
+    withdrawn: (Number(p.withdrawnAmount) || 0) / 1e6,
     currentValue: (Number(p.currentValue) || 0) / 1e6,
     yield: (Number(p.yieldEarned) || 0) / 1e6,
     pending: 0,

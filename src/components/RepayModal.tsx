@@ -14,22 +14,34 @@ interface RepayModalProps {
   isOpen: boolean;
   onClose: () => void;
   poolId: string;
-  v1PoolId: string;
   poolName: string;
   symbol: string;
   poolTokenAddress: string;
   fundManagerAddress: string;
+  borrowerPools: { v1PoolId: string; dedicatedWalletAddress: string }[];
 }
 
 export function RepayModal({ 
-  isOpen, onClose, poolId, v1PoolId, poolName, symbol, poolTokenAddress, fundManagerAddress 
+  isOpen, onClose, poolId, poolName, symbol, poolTokenAddress, fundManagerAddress, borrowerPools
 }: RepayModalProps) {
+  console.log('poolId', poolId);
+  console.log('poolName', poolName);
+  console.log('symbol', symbol);
+  console.log('poolTokenAddress', poolTokenAddress);
+  console.log('fundManagerAddress', fundManagerAddress);
   const [step, setStep] = useState<'input' | 'confirm'>('input');
   const [amount, setAmount] = useState('');
   const [fee, setFee] = useState('0');
   
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
   const { openConnectModal } = useConnectModal();
+
+  // Find matching borrower pool configuration
+  const matchedBorrowerPool = borrowerPools?.find(
+    (bp) => bp.dedicatedWalletAddress?.toLowerCase() === address?.toLowerCase()
+  );
+  const isAuthorized = !!matchedBorrowerPool;
+  const v1PoolId = matchedBorrowerPool ? matchedBorrowerPool.v1PoolId : '';
 
   const { allowanceQuery, approve, repay } = useBorrowerWeb3Actions({
     poolTokenAddress,
@@ -52,6 +64,10 @@ export function RepayModal({
   const isPending = approve.isPending || repay.isPending;
 
   const handleNext = () => {
+    if (isConnected && !isAuthorized) {
+      toast.error('The connected wallet is not configured as a borrower for this pool.');
+      return;
+    }
     if (!amount || parseFloat(amount) <= 0) {
       toast.error('Please enter a valid amount');
       return;
@@ -100,12 +116,13 @@ export function RepayModal({
     reset();
   };
 
-  // Determine button text and state
   let buttonText = 'Confirm Repayment';
   if (step === 'input') {
     buttonText = 'Next Step';
   } else if (!isConnected) {
     buttonText = 'Connect Wallet to Repay';
+  } else if (!isAuthorized) {
+    buttonText = 'Wallet Not Authorized';
   } else if (approve.isPending) {
     buttonText = 'Approving...';
   } else if (needsApproval) {
@@ -141,7 +158,8 @@ export function RepayModal({
                     placeholder="0.00"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="h-12 pr-16 rounded-xl bg-secondary/30 focus:bg-secondary/50 transition-all border-border/50 text-lg font-bold font-mono"
+                    disabled={isConnected && !isAuthorized}
+                    className="h-12 pr-16 rounded-xl bg-secondary/30 focus:bg-secondary/50 transition-all border-border/50 text-lg font-bold font-mono disabled:opacity-50"
                   />
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-primary px-2 py-1 rounded bg-primary/10">
                     {symbol}
@@ -161,7 +179,8 @@ export function RepayModal({
                     placeholder="0.00"
                     value={fee}
                     onChange={(e) => setFee(e.target.value)}
-                    className="h-10 pr-16 rounded-xl bg-secondary/20 focus:bg-secondary/40 transition-all border-border/50 font-mono"
+                    disabled={isConnected && !isAuthorized}
+                    className="h-10 pr-16 rounded-xl bg-secondary/20 focus:bg-secondary/40 transition-all border-border/50 font-mono disabled:opacity-50"
                   />
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted-foreground">
                     {symbol}
@@ -175,6 +194,15 @@ export function RepayModal({
                   Repaying reduces your outstanding debt and stops interest accrual on the repaid principal.
                 </p>
               </div>
+
+              {isConnected && !isAuthorized && (
+                <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 flex gap-3 items-start">
+                  <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                  <p className="text-xs text-destructive font-medium leading-relaxed">
+                    The currently connected wallet is not configured as an authorized repayment address for this pool.
+                  </p>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-6 animate-in fade-in slide-in-from-left-4 duration-300">
@@ -216,10 +244,10 @@ export function RepayModal({
             
             <Button 
               onClick={step === 'input' ? handleNext : handleActionClick} 
-              disabled={isPending}
+              disabled={isPending || (isConnected && !isAuthorized)}
               className={`rounded-xl h-12 font-bold shadow-lg transition-all active:scale-95 ${
                 step === 'confirm' ? 'flex-[2] gradient-primary glow-primary' : 'w-full gradient-primary'
-              }`}
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               {step === 'input' ? (
                 <>Next Step <ArrowRight className="w-4 h-4 ml-2" /></>

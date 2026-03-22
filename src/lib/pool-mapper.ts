@@ -17,6 +17,9 @@ export type ApiPool = {
   feeCollectorAddress: string;
   createdAt?: string;
   totalDeposited?: string;
+  totalWithdrawn?: string;
+  totalDeployed?: string;
+  totalRepaid?: string;
   lpTokenAddress?: string;
   lpTokenName?: string;
   borrowerPools?: Array<{
@@ -38,7 +41,9 @@ function num(s: string | undefined): number {
 export function mapApiPoolToUi(p: ApiPool): Pool {
   const requested = num(p.poolSize) / 1e6;
   const received = num(p.totalDeposited) / 1e6;
-  const aum = num(p.assetUnderManagement) / 1e6;
+  const withdrawn = num(p.totalWithdrawn) / 1e6;
+  const deployed = num(p.totalDeployed) / 1e6;
+  const repaid = num(p.totalRepaid) / 1e6;
   
   const borrowerPools = p.borrowerPools ?? [];
   const allocations = borrowerPools.map((b) => ({
@@ -63,7 +68,9 @@ export function mapApiPoolToUi(p: ApiPool): Pool {
     borrowerAddress: p.borrowerAddress || '',
     totalRequested: requested || 1,
     totalReceived: received,
-    totalRepaid: aum > received ? aum - received : 0,
+    totalWithdrawn: withdrawn,
+    totalFunded: deployed,
+    totalRepaid: repaid,
     apyBasisPoints: p.apyBasisPoints || 0,
     apy: (p.apyBasisPoints ?? 0) / 100,
     poolSize: p.poolSize ?? '0',

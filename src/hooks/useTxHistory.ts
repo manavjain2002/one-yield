@@ -19,7 +19,7 @@ function mapTx(t: ApiTx): TxHistory {
   return {
     id: t.id,
     type: ty,
-    amount: Number(t.amount) || 0,
+    amount: (Number(t.amount) || 0) / 1e6,
     token: t.tokenAddress ?? 'USDC',
     timestamp: t.createdAt,
     txHash: t.txHash,

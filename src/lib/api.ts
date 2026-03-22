@@ -25,6 +25,8 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+let isRefreshing = false;
+
 api.interceptors.response.use(
   (response) => {
     console.log(`%c[Frontend-API] Success: ${response.config.method?.toUpperCase()} ${response.config.url}`, 'color: #10b981; font-weight: bold;', {
@@ -32,10 +34,26 @@ api.interceptors.response.use(
     });
     return response;
   },
-  (error) => {
+  async (error) => {
     if (axios.isAxiosError(error)) {
-      if (error.response?.status === 401) {
-        console.warn('[Frontend-API] Unauthorized - Triggering re-auth');
+      const originalRequest = error.config;
+      if (error.response?.status === 401 && !isRefreshing && originalRequest && !(originalRequest as any)._retry) {
+        isRefreshing = true;
+        (originalRequest as any)._retry = true;
+        try {
+          const { data } = await api.post('/auth/refresh');
+          setAuthToken(data.accessToken);
+          if (originalRequest.headers) {
+            originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+          }
+          return api(originalRequest);
+        } catch {
+          console.warn('[Frontend-API] Refresh failed - Triggering re-auth');
+          window.dispatchEvent(new CustomEvent('yield_unauthorized'));
+        } finally {
+          isRefreshing = false;
+        }
+      } else if (error.response?.status === 401) {
         window.dispatchEvent(new CustomEvent('yield_unauthorized'));
       }
     }

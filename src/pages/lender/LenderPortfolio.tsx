@@ -13,6 +13,7 @@ import { formatUnits, parseUnits } from 'ethers';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useQuery } from '@tanstack/react-query';
 import { getLendingPoolRead } from '@/lib/contracts';
+import { TransactModal } from '@/components/TransactModal';
 
 type TransactState = 'idle' | 'transact' | 'queued';
 
@@ -23,6 +24,7 @@ export default function LenderPortfolio() {
   const [amount, setAmount] = useState('');
 
   const totalDeposited = positions.reduce((s, p) => s + p.deposited, 0);
+  const totalWithdrawn = positions.reduce((s, p) => s + p.withdrawn, 0);
   const currentValue = positions.reduce((s, p) => s + p.currentValue, 0);
   const yieldEarned = positions.reduce((s, p) => s + p.yield, 0);
   const pending = positions.reduce((s, p) => s + p.pending, 0);
@@ -38,6 +40,8 @@ export default function LenderPortfolio() {
     id: selectedPos.poolId,
     contractAddress: selectedPos.contractAddress,
     poolTokenAddress: selectedPos.poolTokenAddress,
+    poolTokenName: 'USDC', // Since mock
+    symbol: 'LP',
     name: selectedPos.poolName,
   } as Pool : null;
 
@@ -83,40 +87,41 @@ export default function LenderPortfolio() {
         </div>
 
         {/* Metrics Section */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <MetricCard title="Total Deposited" value={`$${totalDeposited.toLocaleString()}`} icon={<DollarSign className="h-5 w-5" />} />
+          <MetricCard title="Total Withdrawn" value={`$${totalWithdrawn.toLocaleString()}`} icon={<TrendingUp className="h-5 w-5" />} />
           <MetricCard title="Current Value" value={`$${currentValue.toLocaleString()}`} icon={<TrendingUp className="h-5 w-5" />} />
           <MetricCard title="Yield Earned" value={`$${yieldEarned.toLocaleString()}`} icon={<Percent className="h-5 w-5" />} />
           <MetricCard title="Pending Returns" value={`$${pending.toLocaleString()}`} icon={<Clock className="h-5 w-5" />} />
         </div>
 
         {/* Desktop Table - Enhanced Styling */}
-        <div className="glass-card rounded-2xl overflow-hidden hidden md:block border border-white/5 shadow-2xl">
+        <div className="glass-card rounded-2xl overflow-hidden hidden md:block border border-border/30 shadow-2xl">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-white/5 border-b border-white/10 uppercase tracking-widest text-[10px] font-black">
+              <tr className="bg-secondary/10 border-b border-border/50 uppercase tracking-widest text-[10px] font-black">
                 {['Pool', 'Deposited', 'Current Value', 'Yield', 'Pending', 'Actions'].map(h => (
                   <th key={h} className="px-6 py-5 text-left font-medium text-muted-foreground">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody className="divide-y divide-border/10">
               {positions.length > 0 ? positions.map(pos => (
-                <tr key={pos.poolId} className="hover:bg-white/[0.02] transition-colors group">
+                <tr key={pos.poolId} className="hover:bg-secondary/5 transition-colors group">
                   <td className="px-6 py-5 font-bold text-base group-hover:text-primary transition-colors">{pos.poolName}</td>
                   <td className="px-6 py-5 font-medium">${pos.deposited.toLocaleString()}</td>
-                  <td className="px-6 py-5 font-black text-white">${pos.currentValue.toLocaleString()}</td>
+                  <td className="px-6 py-5 font-black text-foreground">${pos.currentValue.toLocaleString()}</td>
                   <td className="px-6 py-5 text-success font-black text-base">+${pos.yield.toLocaleString()}</td>
                   <td className="px-6 py-5 font-medium text-muted-foreground/60 tracking-tighter">${pos.pending.toLocaleString()}</td>
                   <td className="px-6 py-5">
-                    <Button size="sm" variant="outline" onClick={() => handleTransactClick(pos)} className="rounded-xl border-white/10 text-xs font-bold hover:bg-primary/20 hover:text-primary hover:border-primary/50 transition-all">
+                    <Button size="sm" variant="outline" onClick={() => handleTransactClick(pos)} className="rounded-xl border-border/50 text-xs font-bold hover:bg-primary/20 hover:text-primary hover:border-primary/50 transition-all">
                       Transact
                     </Button>
                   </td>
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center text-muted-foreground italic bg-white/[0.01]">
+                  <td colSpan={6} className="px-6 py-20 text-center text-muted-foreground italic bg-secondary/5">
                     You have no active lending positions. Browse pools to start earning.
                   </td>
                 </tr>
@@ -145,130 +150,17 @@ export default function LenderPortfolio() {
       </div>
 
       {/* Unified Transact Modal */}
-      <Dialog open={transactState === 'transact'} onOpenChange={() => setWithLog('idle')}>
-        <DialogContent className="glass-card border-white/10 sm:max-w-md rounded-[2.5rem] p-8">
-          <DialogHeader>
-            <DialogTitle className="text-3xl font-black tracking-tight mb-1">
-              Transact <span className="text-primary">{selectedPos?.poolName}</span>
-            </DialogTitle>
-            <p className="text-xs text-muted-foreground font-bold tracking-widest uppercase">
-              Current Position: ${selectedPos?.currentValue.toLocaleString()}
-            </p>
-          </DialogHeader>
-
-          <Tabs defaultValue="deposit" className="w-full mt-6">
-            <TabsList className="grid w-full grid-cols-2 rounded-2xl bg-white/5 p-1 mb-6 h-12">
-              <TabsTrigger value="deposit" className="rounded-xl font-bold uppercase tracking-wider text-xs">Deposit</TabsTrigger>
-              <TabsTrigger value="withdraw" className="rounded-xl font-bold uppercase tracking-wider text-xs">Withdraw</TabsTrigger>
-            </TabsList>
-            
-            <div className="space-y-6">
-              <div className="space-y-3">
-                <Label className="uppercase text-[10px] font-black tracking-widest text-muted-foreground ml-1">Amount (USDC)</Label>
-                <div className="relative group">
-                  <Input 
-                    type="number" 
-                    placeholder="0.00" 
-                    value={amount} 
-                    onChange={e => setAmount(e.target.value)}
-                    className="bg-white/5 border-white/10 h-16 rounded-2xl text-xl font-bold focus:ring-primary/20 transition-all px-6 pr-16" 
-                  />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-muted-foreground/40 group-focus-within:text-primary transition-colors">USDC</div>
-                </div>
-              </div>
-              
-              <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-4 flex flex-col gap-2 shadow-inner">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-muted-foreground font-medium flex items-center gap-1">Exchange Rate Polling <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" /></span>
-                </div>
-                {amount && !isNaN(Number(amount)) && (
-                  <div className="text-[10px] text-muted-foreground tracking-wide font-mono mt-1">
-                    <p>1 {selectedPos?.poolTokenAddress ? 'USDC' : 'Asset'} ≈ {exchangeRateQuery.data ? formatUnits(exchangeRateQuery.data.shares || 0n, 6) : '...'} LP Shares</p>
-                    <p>1 LP Share ≈ {exchangeRateQuery.data ? formatUnits(exchangeRateQuery.data.assets || 0n, 6) : '...'} {selectedPos?.poolTokenAddress ? 'USDC' : 'Assets'}</p>
-                  </div>
-                )}
-              </div>
-
-              <TabsContent value="deposit">
-                <div className="flex flex-col gap-4">
-                  <Button
-                    className={`h-14 w-full rounded-2xl font-black transition-all shadow-lg ${
-                      isPaused || !amount
-                        ? 'bg-white/5 text-muted-foreground cursor-not-allowed opacity-40'
-                        : 'gradient-primary text-primary-foreground shadow-primary/30 hover:shadow-primary/50 hover:scale-[1.02] active:scale-[0.98]'
-                    }`}
-                    disabled={approve.isPending || deposit.isPending || !amount || isPaused}
-                    onClick={async () => {
-                      try {
-                        if (needsApproval) {
-                          await approve.mutateAsync(amount);
-                        }
-                        await deposit.mutateAsync(amount);
-                        setWithLog('idle');
-                        setAmount('');
-                      } catch (e) {
-                        // Handled by toast
-                      }
-                    }}
-                  >
-                    {isPaused
-                      ? 'PAUSED'
-                      : approve.isPending
-                      ? 'APPROVING USDC...'
-                      : deposit.isPending
-                      ? 'DEPOSITING...'
-                      : needsApproval && amount
-                      ? `APPROVE & DEPOSIT`
-                      : 'CONFIRM DEPOSIT'}
-                  </Button>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="withdraw">
-                <div className="flex justify-between items-center mb-4 px-2">
-                  <p className="text-[10px] text-muted-foreground italic font-medium">
-                    {isPaused ? 'Pool is currently paused.' : `Available Liquidity: $${Number(maxWithdrawStr).toLocaleString()}`}
-                  </p>
-                  {!isPaused && (
-                    <button 
-                      onClick={() => setAmount(maxWithdrawStr)}
-                      className="text-[10px] text-primary hover:opacity-80 font-black uppercase tracking-widest hover:underline transition-all underline-offset-4"
-                    >
-                      Use Max
-                    </button>
-                  )}
-                </div>
-                <div className="flex gap-4">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setWithLog('queued')} 
-                    className="flex-1 rounded-2xl border-white/10 py-7 font-bold hover:bg-white/5 transition-all text-muted-foreground hover:text-white"
-                  >
-                    <Clock className="mr-2 h-5 w-5" /> Queue
-                  </Button>
-                  <Button 
-                    onClick={() => withdraw.mutate(amount, { onSuccess: () => setWithLog('idle') })}
-                    disabled={withdraw.isPending || !amount || isPaused || isLoadingLimits}
-                    className={`flex-[1.5] rounded-2xl font-black py-7 text-base shadow-2xl transition-all active:scale-95 ${
-                      isPaused ? 'bg-secondary text-muted-foreground' : 'gradient-primary text-primary-foreground hover:shadow-primary/40'
-                    }`}
-                  >
-                    {isPaused ? 'PAUSED' : withdraw.isPending ? 'SIGNING...' : 'INSTANT WITHDRAW'}
-                  </Button>
-                </div>
-                <p className="text-xs text-warning mt-4 text-center">
-                  <AlertTriangle className="w-3 h-3 inline mr-1" />
-                  Early withdrawal forfeits future yields
-                </p>
-              </TabsContent>
-            </div>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
+      {selectedPos && poolContext && (
+        <TransactModal 
+          isOpen={transactState === 'transact'} 
+          onClose={() => setWithLog('idle')} 
+          pool={poolContext} 
+        />
+      )}
 
       {/* Queue State */}
       <Dialog open={transactState === 'queued'} onOpenChange={() => setWithLog('idle')}>
-        <DialogContent className="glass-card border-white/10 sm:max-w-md rounded-3xl p-8">
+        <DialogContent className="glass-card border-border/50 sm:max-w-md rounded-3xl p-8">
           <div className="flex flex-col items-center text-center space-y-6 py-6">
             <div className="rounded-full bg-primary/20 p-6 animate-bounce">
               <Clock className="h-10 w-10 text-primary" />
@@ -276,18 +168,18 @@ export default function LenderPortfolio() {
             <DialogHeader>
               <DialogTitle className="text-2xl font-black tracking-tight">Withdrawal Queued</DialogTitle>
             </DialogHeader>
-            <div className="rounded-3xl bg-white/5 border border-white/5 p-6 w-full space-y-4 shadow-inner">
+            <div className="rounded-3xl bg-secondary/10 border border-border/30 p-6 w-full space-y-4 shadow-inner">
               <div className="flex justify-between items-center text-sm">
                 <span className="text-muted-foreground font-medium">Queue Position</span>
                 <span className="font-black text-primary text-lg">#3</span>
               </div>
-              <div className="h-[1px] bg-white/5 w-full" />
+              <div className="h-[1px] bg-border/50 w-full" />
               <div className="flex justify-between items-center text-sm">
                 <span className="text-muted-foreground font-medium">Estimated Wait</span>
-                <span className="font-black text-white">~2 hours</span>
+                <span className="font-black text-foreground">~2 hours</span>
               </div>
             </div>
-            <Button variant="outline" onClick={() => setWithLog('idle')} className="rounded-2xl border-white/10 w-full py-6 font-bold hover:bg-white/5 transition-all">
+            <Button variant="outline" onClick={() => setWithLog('idle')} className="rounded-2xl border-border/50 w-full py-6 font-bold hover:bg-secondary/10 transition-all">
               Return to Portfolio
             </Button>
           </div>

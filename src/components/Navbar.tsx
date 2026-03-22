@@ -2,8 +2,8 @@ import { Link, useLocation } from 'react-router-dom';
 import { useWallet } from '@/contexts/WalletContext';
 import { cn } from '@/lib/utils';
 import {
-  LayoutDashboard, Wallet, PieChart, LogOut, Menu, X,
-  TrendingUp, Briefcase
+  LayoutDashboard, Wallet, LogOut, Menu, X,
+  TrendingUp, Briefcase, PieChart
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';

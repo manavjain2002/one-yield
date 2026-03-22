@@ -1,29 +1,19 @@
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { RiskBadge, StatusBadge } from '@/components/StatusBadge';
 import { usePoolsList } from '@/hooks/usePools';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { useState } from 'react';
 import type { Pool } from '@/data/mockData';
-import { useLenderActions } from '@/hooks/useLenderActions';
-import { parseUnits } from 'ethers';
-import { CheckCircle2, AlertTriangle, ChevronDown, ChevronUp, ExternalLink, TrendingUp } from 'lucide-react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+import { TransactModal } from '@/components/TransactModal';
+import { AddressLink } from '@/components/AddressLink';
 
 export default function LenderPools() {
-  const [depositPool, setDepositPool] = useState<Pool | null>(null);
-  const [amount, setAmount] = useState('');
+  const [transactPool, setTransactPool] = useState<Pool | null>(null);
   const [expandedPoolId, setExpandedPoolId] = useState<string | null>(null);
   const { data: pools = [] } = usePoolsList();
   
-  const { allowance, approve, deposit, isPaused } = useLenderActions(depositPool);
-  
   const activePools = pools.filter(p => p.status === 'active' || p.status === 'paused');
-  const expectedYield = amount ? (parseFloat(amount) * (depositPool?.apy || 0) / 100).toFixed(2) : '0.00';
-
-  const amountBN = amount ? parseUnits(amount, 6) : 0n;
-  const needsApproval = amountBN > allowance;
 
   return (
     <DashboardLayout>
@@ -86,7 +76,7 @@ export default function LenderPools() {
                       </Button>
                       <Button 
                         size="sm" 
-                        onClick={() => { setDepositPool(pool); setAmount(''); }}
+                        onClick={() => setTransactPool(pool)}
                         className="flex-1 sm:flex-none rounded-xl gradient-primary font-bold px-8 shadow-md glow-primary transition-all active:scale-95"
                         disabled={pool.status === 'paused'}
                       >
@@ -105,21 +95,11 @@ export default function LenderPools() {
                         </div>
                         <div className="space-y-1">
                           <p className="text-[10px] text-muted-foreground uppercase font-black">LP Token Address</p>
-                          <div className="flex items-center gap-1.5 group cursor-pointer" onClick={() => window.open(`https://hashscan.io/testnet/address/${pool.lpTokenAddress || pool.contractAddress}`, '_blank')}>
-                            <p className="text-[10px] font-mono text-muted-foreground group-hover:text-primary transition-colors">
-                              {pool.lpTokenAddress ? `${pool.lpTokenAddress.slice(0, 10)}...${pool.lpTokenAddress.slice(-4)}` : '0.0.12345...'}
-                            </p>
-                            <ExternalLink className="w-2.5 h-2.5 text-muted-foreground/50 group-hover:text-primary transition-colors" />
-                          </div>
+                          <AddressLink address={pool.lpTokenAddress || pool.contractAddress} />
                         </div>
                         <div className="space-y-1">
                           <p className="text-[10px] text-muted-foreground uppercase font-black">Pool Address</p>
-                          <div className="flex items-center gap-1.5 group cursor-pointer" onClick={() => window.open(`https://hashscan.io/testnet/address/${pool.contractAddress}`, '_blank')}>
-                            <p className="text-[10px] font-mono text-muted-foreground group-hover:text-primary transition-colors">
-                              {pool.contractAddress ? `${pool.contractAddress.slice(0, 10)}...${pool.contractAddress.slice(-4)}` : 'N/A'}
-                            </p>
-                            <ExternalLink className="w-2.5 h-2.5 text-muted-foreground/50 group-hover:text-primary transition-colors" />
-                          </div>
+                          <AddressLink address={pool.contractAddress} />
                         </div>
                         <div className="space-y-1">
                           <p className="text-[10px] text-muted-foreground uppercase font-black">Pool Token</p>
@@ -148,86 +128,13 @@ export default function LenderPools() {
         </div>
       </div>
 
-      {/* Deposit Modal - Re-using the premium theme */}
-      <Dialog open={!!depositPool} onOpenChange={() => {
-        if (!approve.isPending && !deposit.isPending) {
-          setDepositPool(null);
-        }
-      }}>
-        <DialogContent className="glass-card border-white/10 sm:max-w-md rounded-[2.5rem] p-10 overflow-hidden shadow-[0_0_100px_rgba(139,92,246,0.15)]">
-          <div className="absolute -top-24 -right-24 w-48 h-48 bg-primary/10 rounded-full blur-[80px] pointer-events-none" />
-          
-          <DialogHeader className="relative z-10">
-            <DialogTitle className="text-3xl font-black tracking-tight mb-1">
-              Deposit <span className="text-primary font-black">{depositPool?.name}</span>
-            </DialogTitle>
-            <p className="text-xs text-muted-foreground font-bold tracking-widest uppercase">
-              {depositPool?.symbol} · Strategy: Fixed Yield RWA
-            </p>
-          </DialogHeader>
-
-          <div className="space-y-8 py-6 relative z-10">
-            <div className="space-y-4">
-              <Label className="uppercase text-[10px] font-black tracking-widest text-muted-foreground ml-1">Deposit Amount (USDC)</Label>
-              <div className="relative group">
-                <Input 
-                  type="number" 
-                  placeholder="0.00" 
-                  value={amount} 
-                  onChange={e => setAmount(e.target.value)} 
-                  className="bg-white/5 border-white/10 h-20 rounded-3xl text-2xl font-black focus:ring-primary/20 transition-all px-8 pr-20 shadow-inner" 
-                />
-                <div className="absolute right-6 top-1/2 -translate-y-1/2 font-black text-muted-foreground/40 group-focus-within:text-primary transition-colors text-lg">USDC</div>
-              </div>
-            </div>
-
-            <div className="rounded-[2rem] bg-white/[0.03] border border-white/5 p-8 space-y-4 shadow-xl">
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-muted-foreground font-bold uppercase tracking-wider">Target Yield</span>
-                <span className="text-xl font-black text-success tracking-tighter">${expectedYield} <span className="text-[10px] text-muted-foreground/50">/ yr</span></span>
-              </div>
-              <div className="h-[1px] bg-white/5" />
-              <div className="flex justify-between items-center text-sm font-bold">
-                <span className="text-xs text-muted-foreground font-bold uppercase tracking-wider">Portfolio APY</span>
-                <span className="text-white">{depositPool?.apy}%</span>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-4">
-              <Button
-                className={`h-16 w-full rounded-2xl font-black transition-all shadow-2xl ${
-                  isPaused || !amount
-                    ? 'bg-white/5 text-muted-foreground cursor-not-allowed opacity-40'
-                    : 'gradient-primary text-primary-foreground shadow-primary/30 hover:shadow-primary/50 hover:scale-[1.02]'
-                }`}
-                disabled={approve.isPending || deposit.isPending || !amount || isPaused}
-                onClick={async () => {
-                  try {
-                    if (needsApproval) {
-                      await approve.mutateAsync(amount);
-                    }
-                    await deposit.mutateAsync(amount);
-                    setDepositPool(null);
-                    setAmount('');
-                  } catch (e) {
-                    // Errors are handled by the toast notifications within the mutation hooks
-                  }
-                }}
-              >
-                {isPaused
-                  ? 'Paused'
-                  : approve.isPending
-                  ? 'Approving USDC...'
-                  : deposit.isPending
-                  ? 'Depositing...'
-                  : needsApproval && amount
-                  ? `Approve & Deposit`
-                  : 'Confirm Deposit'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {transactPool && (
+        <TransactModal
+          isOpen={!!transactPool}
+          onClose={() => setTransactPool(null)}
+          pool={transactPool}
+        />
+      )}
     </DashboardLayout>
   );
 }

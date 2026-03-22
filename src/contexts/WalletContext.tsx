@@ -103,7 +103,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       // ONLY disconnect if the role strictly requires a wallet (Lender/Manager)
       // Borrowers and Admins using ID/Pass should NOT be disconnected by wagmi
       if (state.role === 'lender' || state.role === 'manager') {
-        if (!state.username) { // If it's a pure Web3 user
+        if (!state.username && !state.accessToken) { // If it's a pure Web3 user with no stored token
           console.log('[WalletContext] Web3 disconnected - logging out');
           disconnect();
         }
@@ -113,7 +113,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   const disconnect = useCallback(() => {
     setAuthToken(null);
-    wagmiDisconnect();
+    
+    // Always attempt to disconnect the Web3 wallet to ensure the modal/session is cleared
+    try { 
+      wagmiDisconnect(); 
+    } catch (e) { 
+      console.warn('[WalletContext] Web3 disconnect warning:', e); 
+    }
+
     setState({
       isConnected: false,
       address: null,

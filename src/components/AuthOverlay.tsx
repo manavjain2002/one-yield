@@ -11,11 +11,18 @@ import { AlertCircle } from "lucide-react";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { useAccount } from 'wagmi';
 
 export function AuthOverlay() {
   const { needsReAuth, setNeedsReAuth, loginUser, disconnect, username } = useWallet();
+  const { isConnected: isWeb3Connected } = useAccount();
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  if (isWeb3Connected) {
+    if (needsReAuth) setNeedsReAuth(false);
+    return null;
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

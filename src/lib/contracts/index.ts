@@ -6,7 +6,7 @@
  *
  *   // Read call (no wallet needed)
  *   const factory = getReadContract(FACTORY_ADDR, POOL_FACTORY_ABI);
- *   const total = await factory.totalPools();
+ *   const total = await factory.totalV1Pools();
  *
  *   // Write call (MetaMask signer)
  *   const factory = await getPoolFactory();
@@ -36,14 +36,19 @@ import {
 
 /** Get a read-only JSON-RPC provider (no wallet needed). */
 export function getReadProvider(): JsonRpcProvider {
-  return new JsonRpcProvider(RPC_URL, { chainId: 296, name: 'hedera-testnet' }, { staticNetwork: true });
+  const provider = new JsonRpcProvider(RPC_URL, { chainId: 296, name: 'hedera-testnet' }, { staticNetwork: true });
+  // Hedera doesn't support ENS -- suppress all resolution attempts
+  provider.getResolver = async () => null;
+  return provider;
 }
 
 /** Get EIP-1193 browser provider from MetaMask. */
 export function getProvider(): BrowserProvider {
   const eth = (window as unknown as { ethereum?: { request: (...args: unknown[]) => Promise<unknown> } }).ethereum;
   if (!eth) throw new Error('MetaMask is not installed');
-  return new BrowserProvider(eth);
+  const provider = new BrowserProvider(eth, { chainId: 296, name: 'hedera-testnet' });
+  provider.getResolver = async () => null;
+  return provider;
 }
 
 /** Get signer from MetaMask (prompts user to connect if needed). */

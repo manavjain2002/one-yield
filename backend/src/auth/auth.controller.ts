@@ -84,4 +84,10 @@ export class AuthController {
   register(@Body() dto: RegisterDto) {
     return this.auth.registerWithCredentials(dto.username, dto.passwordPlain, dto.role);
   }
+
+  @Post('refresh')
+  @UseGuards(JwtAuthGuard)
+  refresh(@CurrentUser() user: any) {
+    return this.auth.refreshToken(user.userId);
+  }
 }

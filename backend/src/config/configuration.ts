@@ -35,11 +35,4 @@ export default () => ({
   oracle: {
     cron: process.env.ORACLE_CRON ?? '30 0 * * *',
   },
-  indexer: {
-    pollIntervalSec: parseInt(
-      process.env.INDEXER_POLL_INTERVAL_SEC ?? '15',
-      10,
-    ),
-    startBlock: process.env.INDEXER_START_BLOCK ?? '32993354',
-  },
 });

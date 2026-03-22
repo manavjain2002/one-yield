@@ -10,7 +10,6 @@ import { WebsocketModule } from './websocket/websocket.module';
 import { ScreeningModule } from './screening/screening.module';
 import { ContractsModule } from './contracts/contracts.module';
 import { QueueModule } from './queue/queue.module';
-import { IndexerModule } from './indexer/indexer.module';
 import { OracleModule } from './oracle/oracle.module';
 import { AuthModule } from './auth/auth.module';
 import { PoolsModule } from './pools/pools.module';
@@ -23,7 +22,6 @@ import { LenderPositionEntity } from './entities/lender-position.entity';
 import { AumHistoryEntity } from './entities/aum-history.entity';
 import { QueueJobEntity } from './entities/queue-job.entity';
 import { ContractRegistryEntity } from './entities/contract-registry.entity';
-import { IndexerStateEntity } from './entities/indexer-state.entity';
 import { UserEntity } from './entities/user.entity';
 import { BorrowerWalletEntity } from './entities/borrower-wallet.entity';
 
@@ -59,7 +57,6 @@ import { BorrowerWalletEntity } from './entities/borrower-wallet.entity';
           AumHistoryEntity,
           QueueJobEntity,
           ContractRegistryEntity,
-          IndexerStateEntity,
           UserEntity,
           BorrowerWalletEntity,
         ],
@@ -82,7 +79,6 @@ import { BorrowerWalletEntity } from './entities/borrower-wallet.entity';
     ScreeningModule,
     ContractsModule,
     QueueModule,
-    IndexerModule,
     OracleModule,
     AuthModule,
     PoolsModule,

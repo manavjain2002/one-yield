@@ -5,7 +5,7 @@
 export const FACTORY_ABI = [
   'function createPool(string _poolName, string _poolSymbol, address _poolManager, address _poolToken, address _oracleManager, address __feeCollector, uint256 _projectedAPY, uint256 _poolSize) returns (address _poolAddress, address _fundManager)',
   'event PoolCreated(address _pool, address indexed _poolManager, address _assetManager, address indexed _poolToken, address indexed _oracleManager, uint256 _poolAPY, uint256 _poolSize)',
-  'function totalPools() view returns (uint256)',
+  'function totalV1Pools() view returns (uint256)',
   'function pools(uint256) view returns (address)',
   'function pauseTarget(address target)',
   'function unpauseTarget(address target)',
@@ -35,7 +35,7 @@ export const ASSET_MANAGER_ABI = [
   'function updatePoolAllocation(uint256 index, uint16 allocation)',
   'function deployFunds()',
   'function pay(string _v1PoolId, uint256 _amount, uint256 _fee)',
-  'function sendToV2Reserve(uint256 _v2Amount, uint256 uptoQueuePosition)',
+  'function sendToReserve(uint256 _v2Amount)',
   'function totalAssets() view returns (uint256)',
   'event FundDeployed(address indexed _executor, uint256 _amount)',
   'event FundDeployedToChildPool(address indexed _to, string _poolId, uint256 _amount)',

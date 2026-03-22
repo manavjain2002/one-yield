@@ -34,7 +34,7 @@ export function TransactionList({ transactions, isLoading }: TransactionListProp
 
   if (transactions.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground bg-white/[0.01] rounded-2xl border border-dashed border-white/10 mx-auto w-full italic">
+      <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground bg-secondary/5 rounded-2xl border border-dashed border-border/50 mx-auto w-full italic">
         <Layers className="h-10 w-10 mb-4 opacity-20" />
         <p className="font-medium tracking-tight">No transactions found</p>
         <p className="text-xs opacity-50 mt-1">Activities will appear here once recorded on-chain</p>
@@ -83,11 +83,11 @@ export function TransactionList({ transactions, isLoading }: TransactionListProp
             <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs uppercase tracking-wider">Status</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-white/5">
+        <tbody className="divide-y divide-border/10">
           {transactions.map((tx) => {
             const d = parseDate(tx.createdAt);
             return (
-              <tr key={tx.id} className="hover:bg-white/[0.02] transition-colors group">
+              <tr key={tx.id} className="hover:bg-secondary/5 transition-colors group">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 rounded-lg bg-secondary/50 border border-border/50">
@@ -98,7 +98,7 @@ export function TransactionList({ transactions, isLoading }: TransactionListProp
                     </span>
                   </div>
                 </td>
-                <td className="px-4 py-3 font-bold text-white">
+                <td className="px-4 py-3 font-bold text-foreground">
                   {tx.amount && tx.amount !== '0' ? `$${(Number(tx.amount) / 1e6).toLocaleString()}` : '—'}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground font-mono text-xs hidden md:table-cell">

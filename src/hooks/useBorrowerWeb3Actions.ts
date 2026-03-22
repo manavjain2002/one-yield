@@ -15,6 +15,14 @@ export function useBorrowerWeb3Actions({ poolTokenAddress, fundManagerAddress, p
   const { address: wagmiAddress, isConnected } = useAccount();
   const queryClient = useQueryClient();
 
+  const confirmTx = async (txHash: string, type: string, poolId?: string) => {
+    try {
+      await api.post('/pools/confirm-tx', { txHash, type, poolId });
+    } catch (e) {
+      console.error('[ConfirmTx] Failed:', e);
+    }
+  };
+
   // 1. Check Allowance
   const allowanceQuery = useQuery({
     queryKey: ['allowance', fundManagerAddress, poolTokenAddress, wagmiAddress],
@@ -37,7 +45,8 @@ export function useBorrowerWeb3Actions({ poolTokenAddress, fundManagerAddress, p
       try {
         const token = await getERC20(poolTokenAddress);
         const amountWei = parseUnits(amountHuman, 6); // Assuming USDC 6 decimals
-        
+
+        console.log('amountWei', amountWei);
         const tx = await token.approve(fundManagerAddress, amountWei);
         toast.loading('Approving tokens...', { id: tid });
         
@@ -56,6 +65,9 @@ export function useBorrowerWeb3Actions({ poolTokenAddress, fundManagerAddress, p
   // 3. Repay Function (Calls 'pay' on AssetManager)
   const repay = useMutation({
     mutationFn: async ({ v1PoolId, amount, fee }: { v1PoolId: string; amount: string; fee: string }) => {
+      console.log('v1PoolId', v1PoolId);
+      console.log('amount', amount);
+      console.log('fee', fee);
       if (!isConnected || !wagmiAddress) throw new Error('Wallet not connected');
       if (!fundManagerAddress) throw new Error('Asset Manager address missing');
 
@@ -82,10 +94,12 @@ export function useBorrowerWeb3Actions({ poolTokenAddress, fundManagerAddress, p
             poolId,
             tokenAddress: poolTokenAddress,
             toAddress: fundManagerAddress,
+            status: 'confirmed',
           });
         } catch (e) {
           console.error('[Audit] Failed to record activity:', e);
         }
+        await confirmTx(tx.hash, 'repay', poolId);
 
       } catch (err) {
         toast.error(getErrorMessage(err), { id: tid });

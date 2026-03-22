@@ -16,7 +16,7 @@ export const POOL_FACTORY_ABI = [
   'function unpauseTarget(address target)',
 
   // Read
-  'function totalPools() view returns (uint256)',
+  'function totalV1Pools() view returns (uint256)',
   'function pools(uint256) view returns (address)',
 
   // Events
@@ -38,6 +38,8 @@ export const LENDING_POOL_ABI = [
   'function maxRedeem(address owner) view returns (uint256)',
   'function totalAssets() view returns (uint256)',
   'function assetUnderManagement() view returns (uint256)',
+  'function convertToShares(uint256 assets) view returns (uint256 shares)',
+  'function convertToAssets(uint256 shares) view returns (uint256 assets)',
 
   // Events
   'event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)',
@@ -53,14 +55,19 @@ export const ASSET_MANAGER_ABI = [
   'function addPool(string _v1PoolId, uint16 _allocation, address _dedicatedWallet)',
   'function removePool(uint256 index)',
   'function updatePoolAllocation(uint256 index, uint16 allocation)',
-  'function updateWallet(uint256 index, address wallet)',
+  'function updatePoolWallet(string _v1PoolId, address wallet)',
   'function deployFunds()',
   'function pay(string _v1PoolId, uint256 _amount, uint256 _fee)',
-  'function sendToV2Reserve(uint256 _v2Amount, uint256 uptoQueuePosition)',
+  'function sendToReserve(uint256 _v2Amount)',
 
   // Read
+  'function totalV1Pools() view returns (uint256)',
+  'function dedicatedWallet(string _v1PoolId) view returns (address)',
   'function totalAssets() view returns (uint256)',
   'function totalQueued() view returns (uint256)',
+  'function v1Pools(uint256 index) view returns (string v1PoolId, uint16 allocation, address wallet)',
+  'function poolCount() view returns (uint256)',
+  'function totalAllocation() view returns (uint16)',
 
   // Events
   'event FundDeployed(address indexed _executor, uint256 _amount)',

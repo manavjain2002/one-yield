@@ -16,7 +16,7 @@ export const POOL_FACTORY_ABI = [
   'function unpauseTarget(address target)',
 
   // Read
-  'function totalPools() view returns (uint256)',
+  'function totalV1Pools() view returns (uint256)',
   'function pools(uint256) view returns (address)',
 
   // Events
@@ -56,7 +56,7 @@ export const ASSET_MANAGER_ABI = [
   'function updateWallet(uint256 index, address wallet)',
   'function deployFunds()',
   'function pay(string _v1PoolId, uint256 _amount, uint256 _fee)',
-  'function sendToV2Reserve(uint256 _v2Amount, uint256 uptoQueuePosition)',
+  'function sendToReserve(uint256 _v2Amount)',
 
   // Read
   'function totalAssets() view returns (uint256)',

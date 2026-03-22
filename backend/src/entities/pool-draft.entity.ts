@@ -12,8 +12,8 @@ export class PoolDraftEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
-  borrowerAddress: string;
+  @Column({ name: 'borrower_identifier' })
+  borrowerIdentifier: string;
 
   @Column({ nullable: true })
   txHash: string | null;

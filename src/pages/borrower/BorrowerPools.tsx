@@ -10,6 +10,7 @@ import { Plus, ChevronDown, ChevronUp, ExternalLink, Wallet } from 'lucide-react
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { api, getErrorMessage, isApiConfigured } from '@/lib/api';
@@ -38,6 +39,7 @@ export default function BorrowerPools() {
 
   // Repay Modal State
   const [selectedRepayPool, setSelectedRepayPool] = useState<Pool | null>(null);
+  console.log('selectedRepayPool', selectedRepayPool);
 
   const { data: tokens = [] } = useQuery({
     queryKey: ['constants', 'tokens'],
@@ -115,11 +117,16 @@ export default function BorrowerPools() {
           {borrowerPools.length > 0 ? (
             borrowerPools.map((pool) => {
               const isExpanded = expandedPoolId === pool.id;
+              console.log("🚀 ~ BorrowerPools ~ isExpanded:", isExpanded)
               const principal = Math.max(0, pool.totalReceived - pool.totalRepaid);
+              console.log("🚀 ~ BorrowerPools ~ principal:", principal)
               const coupon = principal * pool.apy / 2;
+              console.log("🚀 ~ BorrowerPools ~ coupon:", coupon)
               const outstanding = principal + coupon;
+              console.log("🚀 ~ BorrowerPools ~ outstanding:", outstanding)
               const nominalPoolSize = Number(pool.poolSize) / 1e6;
-              
+              console.log("🚀 ~ BorrowerPools ~ nominalPoolSize:", nominalPoolSize)
+
               return (
                 <div key={pool.id} className="glass-card rounded-2xl overflow-hidden border border-border/40 transition-all hover:border-primary/20">
                   {/* Main Row */}
@@ -154,17 +161,17 @@ export default function BorrowerPools() {
                     </div>
 
                     <div className="flex items-center gap-3 w-full sm:w-auto">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setExpandedPoolId(isExpanded ? null : pool.id)}
-                        className="rounded-xl flex-1 sm:flex-none text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors"
+                        className="rounded-xl flex-1 sm:flex-none text-xs font-bold uppercase tracking-widest text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
                       >
                         {isExpanded ? <ChevronUp className="w-4 h-4 mr-1" /> : <ChevronDown className="w-4 h-4 mr-1" />}
                         Details
                       </Button>
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         onClick={() => {
                           if (!isWeb3Connected) {
                             openConnectModal?.();
@@ -172,12 +179,11 @@ export default function BorrowerPools() {
                           }
                           setSelectedRepayPool(pool);
                         }}
-                        className={`flex-1 sm:flex-none rounded-xl font-bold px-8 shadow-md transition-all active:scale-95 ${
-                          !isWeb3Connected
-                            ? 'bg-secondary text-muted-foreground border border-border/50'
-                            : 'gradient-primary glow-primary'
-                        }`}
-                        disabled={outstanding <= 0}
+                        className={`flex-1 sm:flex-none rounded-xl font-bold px-8 shadow-md transition-all active:scale-95 ${!isWeb3Connected
+                          ? 'bg-secondary text-muted-foreground border border-border/50'
+                          : 'gradient-primary glow-primary'
+                          }`}
+                      // disabled={outstanding <= 0}
                       >
                         {!isWeb3Connected ? (
                           <><Wallet className="w-3 h-3 mr-1.5" />Connect to Repay</>
@@ -189,16 +195,7 @@ export default function BorrowerPools() {
                   {/* Expandable Details */}
                   {isExpanded && (
                     <div className="px-5 pb-5 pt-2 border-t border-border/20 bg-primary/[0.02] animate-in slide-in-from-top-2 duration-200">
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 py-4">
-                        <div className="space-y-1">
-                          <p className="text-[10px] text-muted-foreground uppercase font-black">Dedicated Wallet</p>
-                          <div className="flex items-center gap-1.5 group cursor-pointer" onClick={() => window.open(`https://hashscan.io/testnet/address/${pool.borrowerPools[0]?.dedicatedWalletAddress}`, '_blank')}>
-                            <p className="text-[10px] font-mono text-muted-foreground group-hover:text-primary">
-                              {pool.borrowerPools[0]?.dedicatedWalletAddress ? `${pool.borrowerPools[0].dedicatedWalletAddress.slice(0, 10)}...` : 'N/A'}
-                            </p>
-                            <ExternalLink className="w-2.5 h-2.5 text-muted-foreground/50 group-hover:text-primary transition-colors" />
-                          </div>
-                        </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 py-4">
                         <div className="space-y-1">
                           <p className="text-[10px] text-muted-foreground uppercase font-black">Pool Size</p>
                           <p className="text-xs font-bold text-foreground/80">${nominalPoolSize.toLocaleString()}M</p>
@@ -254,32 +251,27 @@ export default function BorrowerPools() {
             </div>
             <div className="space-y-2">
               <Label>Accepted token</Label>
-              <select
+              <SearchableSelect
+                options={[
+                  { value: '', label: 'Default USDC' },
+                  ...tokens.map(t => ({ value: t.address, label: `${t.name} (${t.symbol})`, description: `${t.address.slice(0, 8)}...${t.address.slice(-6)}` })),
+                ]}
                 value={tokenAddress}
-                onChange={e => setTokenAddress(e.target.value)}
-                className="bg-secondary/50 border-border flex h-10 w-full rounded-md border text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 px-3 py-2"
-              >
-                <option value="">Select Token (Default USDC)</option>
-                {tokens.map((t) => (
-                  <option key={t.address} value={t.address}>
-                    {t.name} ({t.symbol})
-                  </option>
-                ))}
-              </select>
+                onChange={setTokenAddress}
+                placeholder="Select Token (Default USDC)"
+              />
             </div>
             <div className="space-y-2">
-              <Label>Value to Borrow (USD, mock USDC)</Label>
+              <Label>Borrow Amount</Label>
               <Input
-                type="text"
-                inputMode="decimal"
+                type="number"
+                inputMode="numeric"
+                step="1"
                 value={borrowUsd}
-                onChange={(e) => setBorrowUsd(e.target.value)}
+                onChange={(e) => { const v = e.target.value; if (!v || /^\d+$/.test(v)) setBorrowUsd(v); }}
                 placeholder="500000"
                 className="bg-secondary/50 border-border"
               />
-              <p className="text-xs text-muted-foreground">
-                Converted to USDC (6 decimals) for <code>poolSize</code> on-chain.
-              </p>
             </div>
             <div className="space-y-2">
               <Label>Projected APY (%)</Label>
@@ -318,17 +310,17 @@ export default function BorrowerPools() {
           </div>
         </DialogContent>
       </Dialog>
-      
+
       {selectedRepayPool && (
         <RepayModal
           isOpen={!!selectedRepayPool}
           onClose={() => setSelectedRepayPool(null)}
           poolId={selectedRepayPool.id}
-          v1PoolId={selectedRepayPool.borrowerPools[0]?.v1PoolId || ''}
           poolName={selectedRepayPool.name}
-          symbol={selectedRepayPool.symbol}
+          symbol={selectedRepayPool.poolTokenName || 'USDC'}
           poolTokenAddress={selectedRepayPool.poolTokenAddress}
           fundManagerAddress={selectedRepayPool.fundManagerAddress}
+          borrowerPools={selectedRepayPool.borrowerPools}
         />
       )}
 

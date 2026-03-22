@@ -170,6 +170,19 @@ export class AuthService implements OnModuleInit {
     };
   }
 
+  async refreshToken(userId: string) {
+    const user = await this.users.findOne({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const accessToken = await this.jwt.signAsync({
+      sub: user.id,
+      walletAddress: user.walletAddress,
+      username: user.username,
+      role: user.role,
+    });
+    return { accessToken, role: user.role };
+  }
+
   async loginWithCredentials(username: string, passwordPlain: string) {
     const user = await this.users.findOne({ where: { username } });
     if (!user || !user.passwordHash) {

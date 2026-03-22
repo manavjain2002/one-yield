@@ -17,9 +17,18 @@ export function useManagerActions() {
         poolId: pool.id,
         tokenAddress: pool.poolTokenAddress,
         toAddress: pool.contractAddress,
+        status: 'confirmed',
       });
     } catch (e) {
       console.error('[Audit] Failed to record manager action:', e);
+    }
+  };
+
+  const confirmTx = async (txHash: string, type: string, poolId?: string) => {
+    try {
+      await api.post('/pools/confirm-tx', { txHash, type, poolId });
+    } catch (e) {
+      console.error('[ConfirmTx] Failed:', e);
     }
   };
 
@@ -34,6 +43,7 @@ export function useManagerActions() {
         toast.loading('Activating pool...', { id: tid });
         await tx.wait();
         toast.success(`Pool ${pool.name} activated successfully!`, { id: tid });
+        await confirmTx(tx.hash, 'activate', pool.id);
       } catch (err) {
         toast.error(getErrorMessage(err), { id: tid });
         throw err;
@@ -55,6 +65,7 @@ export function useManagerActions() {
         toast.loading('Pausing pool...', { id: tid });
         await tx.wait();
         toast.success(`Pool ${pool.name} paused successfully!`, { id: tid });
+        await confirmTx(tx.hash, 'pause', pool.id);
       } catch (err) {
         toast.error(getErrorMessage(err), { id: tid });
         throw err;
@@ -76,6 +87,7 @@ export function useManagerActions() {
         toast.loading('Unpausing pool...', { id: tid });
         await tx.wait();
         toast.success(`Pool ${pool.name} unpaused successfully!`, { id: tid });
+        await confirmTx(tx.hash, 'unpause', pool.id);
       } catch (err) {
         toast.error(getErrorMessage(err), { id: tid });
         throw err;
@@ -97,6 +109,7 @@ export function useManagerActions() {
         toast.loading('Closing pool...', { id: tid });
         await tx.wait();
         toast.success(`Pool ${pool.name} closed successfully!`, { id: tid });
+        await confirmTx(tx.hash, 'close', pool.id);
       } catch (err) {
         toast.error(getErrorMessage(err), { id: tid });
         throw err;
@@ -122,6 +135,7 @@ export function useManagerActions() {
 
         await tx.wait();
         toast.success(`Successfully swept $${Number(amtStr).toLocaleString()} to Fund Manager!`, { id: tid });
+        await confirmTx(tx.hash, 'sweep', pool.id);
       } catch (err) {
         toast.error(getErrorMessage(err), { id: tid });
         throw err;
@@ -140,8 +154,8 @@ export function useManagerActions() {
       try {
         if (!pool.fundManagerAddress) throw new Error('Fund Manager address missing.');
         const fm = await getAssetManager(pool.fundManagerAddress);
-        // Using sendToV2Reserve(amount, uptoQueuePosition)
-        const tx = await fm.sendToV2Reserve(amount, 0, { gasLimit: 500_000 });
+        // Using sendToReserve(amount, uptoQueuePosition)
+        const tx = await fm.sendToReserve(amount, { gasLimit: 500_000 });
         toast.loading('Refilling pool...', { id: tid });
 
         const amtStr = (Number(amount) / 1e6).toString();
@@ -149,6 +163,7 @@ export function useManagerActions() {
 
         await tx.wait();
         toast.success(`Successfully refilled pool with $${Number(amtStr).toLocaleString()}!`, { id: tid });
+        await confirmTx(tx.hash, 'refill', pool.id);
       } catch (err) {
         toast.error(getErrorMessage(err), { id: tid });
         throw err;
@@ -176,6 +191,7 @@ export function useManagerActions() {
 
         await tx.wait();
         toast.success('Funds released to borrower sub-pools successfully!', { id: tid });
+        await confirmTx(tx.hash, 'deploy_funds', pool.id);
       } catch (err) {
         toast.error(getErrorMessage(err), { id: tid });
         throw err;
@@ -189,12 +205,13 @@ export function useManagerActions() {
 
   // 4. Manage Child Pools
   const addChildPool = useMutation({
-    mutationFn: async ({ pool, v1PoolId, wallet }: { pool: Pool, v1PoolId: string, wallet: string }) => {
+    mutationFn: async ({ pool, v1PoolId, wallet, allocationVal }: { pool: Pool, v1PoolId: string, wallet: string, allocationVal: number }) => {
       const tid = toast.loading('Waiting for MetaMask signature to add child pool...');
       try {
         if (!pool.fundManagerAddress) throw new Error('Fund Manager address missing.');
         const fm = await getAssetManager(pool.fundManagerAddress);
-        const tx = await fm.addV1Pool(v1PoolId, wallet);
+        console.log('wallet', wallet);
+        const tx = await fm.addPool(v1PoolId, allocationVal, wallet);
         toast.loading('Adding child pool...', { id: tid });
         await tx.wait();
         toast.success(`Child pool ${v1PoolId} added successfully!`, { id: tid });
@@ -206,11 +223,11 @@ export function useManagerActions() {
   });
 
   const removeChildPool = useMutation({
-    mutationFn: async ({ pool, v1PoolId }: { pool: Pool, v1PoolId: string }) => {
+    mutationFn: async ({ pool, index }: { pool: Pool, index: number }) => {
       const tid = toast.loading('Waiting for MetaMask signature to remove child pool...');
       try {
         const fm = await getAssetManager(pool.fundManagerAddress);
-        const tx = await fm.removeV1Pool(v1PoolId);
+        const tx = await fm.removePool(index);
         toast.loading('Removing child pool...', { id: tid });
         await tx.wait();
         toast.success(`Child pool removed successfully!`, { id: tid });
@@ -222,11 +239,11 @@ export function useManagerActions() {
   });
 
   const updateChildAllocation = useMutation({
-    mutationFn: async ({ pool, v1PoolId, allocation }: { pool: Pool, v1PoolId: string, allocation: number }) => {
+    mutationFn: async ({ pool, index, allocation }: { pool: Pool, index: number, allocation: number }) => {
       const tid = toast.loading('Waiting for MetaMask signature to set allocation...');
       try {
         const fm = await getAssetManager(pool.fundManagerAddress);
-        const tx = await fm.setAllocation(v1PoolId, allocation);
+        const tx = await fm.updatePoolAllocation(index, allocation);
         toast.loading('Setting allocation...', { id: tid });
         await tx.wait();
         toast.success(`Allocation updated successfully!`, { id: tid });
@@ -242,7 +259,7 @@ export function useManagerActions() {
       const tid = toast.loading('Waiting for MetaMask signature to update wallet...');
       try {
         const fm = await getAssetManager(pool.fundManagerAddress);
-        const tx = await fm.updateWallet(v1PoolId, wallet);
+        const tx = await fm.updatePoolWallet(v1PoolId, wallet);
         toast.loading('Updating wallet...', { id: tid });
         await tx.wait();
         toast.success(`Wallet updated successfully!`, { id: tid });

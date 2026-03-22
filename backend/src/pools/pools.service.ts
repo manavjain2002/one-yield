@@ -130,10 +130,33 @@ export class PoolsService {
   private async enrichPool(p: PoolEntity) {
     const raw = await this.positions
       .createQueryBuilder('pos')
-      .select('COALESCE(SUM(CAST(pos.depositedAmount AS DECIMAL)), 0)', 'total')
+      .select('COALESCE(SUM(CAST(pos.depositedAmount AS DECIMAL)), 0)', 'totalDeposited')
+      .addSelect('COALESCE(SUM(CAST(pos.withdrawnAmount AS DECIMAL)), 0)', 'totalWithdrawn')
       .where('pos.poolId = :id', { id: p.id })
-      .getRawOne<{ total: string }>();
-    return { ...p, totalDeposited: raw?.total ?? '0' };
+      .getRawOne<{ totalDeposited: string; totalWithdrawn: string }>();
+
+    let totalDeployed = 0n;
+    let totalRepaid = 0n;
+    if (p.borrowerPools) {
+      for (const bp of p.borrowerPools) {
+        totalDeployed += BigInt(bp.fundsDeployed || '0');
+        totalRepaid += BigInt(bp.fundsRepaid || '0');
+      }
+    } else {
+      const bps = await this.borrowerPools.find({ where: { poolId: p.id } });
+      for (const bp of bps) {
+        totalDeployed += BigInt(bp.fundsDeployed || '0');
+        totalRepaid += BigInt(bp.fundsRepaid || '0');
+      }
+    }
+
+    return {
+      ...p,
+      totalDeposited: raw?.totalDeposited ?? '0',
+      totalWithdrawn: raw?.totalWithdrawn ?? '0',
+      totalDeployed: totalDeployed.toString(),
+      totalRepaid: totalRepaid.toString()
+    };
   }
 
   // ─── Pool Creation (borrower signs tx from frontend) ──────
@@ -158,7 +181,7 @@ export class PoolsService {
 
     // Save draft (will be linked to on-chain pool by indexer)
     const draft = this.drafts.create({
-      borrowerAddress: normalizedBorrower,
+      borrowerIdentifier: normalizedBorrower,
       name: dto.name,
       symbol: dto.symbol,
       apyBasisPoints: dto.apyBasisPoints,
@@ -193,24 +216,63 @@ export class PoolsService {
 
       const receipt = await tx.wait();
 
+      // Parse PoolCreated event to extract pool + fund manager addresses
+      const { ethers: ethersLib } = await import('ethers');
+      const iface = new ethersLib.Interface(POOL_FACTORY_ABI);
+      let poolAddr = '';
+      let fmAddr = '';
+      for (const log of receipt.logs) {
+        try {
+          const parsed = iface.parseLog({ topics: [...log.topics], data: log.data });
+          if (parsed?.name === 'PoolCreated') {
+            poolAddr = String(parsed.args._pool).toLowerCase();
+            fmAddr = String(parsed.args._assetManager).toLowerCase();
+            break;
+          }
+        } catch { }
+      }
+
       draft.txHash = tx.hash;
+      draft.indexed = true;
       await this.drafts.save(draft);
+
+      // Create real PoolEntity from event data
+      if (poolAddr) {
+        const pool = this.pools.create({
+          contractAddress: poolAddr,
+          fundManagerAddress: fmAddr,
+          name: dto.name,
+          symbol: dto.symbol,
+          status: 'pending',
+          poolTokenAddress: dto.poolTokenAddress,
+          lpTokenAddress: poolAddr,
+          apyBasisPoints: dto.apyBasisPoints,
+          poolSize: dto.poolSize,
+          assetUnderManagement: '0',
+          borrowerAddress: normalizedBorrower,
+          feeCollectorAddress: dto.feeCollectorAddress,
+          poolManagerAddress: dto.poolManagerAddress,
+          oracleManagerAddress: dto.oracleManagerAddress,
+        });
+        await this.pools.save(pool);
+      }
 
       const txRecord = this.txs.create({
         txHash: tx.hash,
         type: 'create_pool',
         fromAddress: this.contracts.getSigner('role_manager').address,
         toAddress: this.contracts.factoryAddress(),
-        status: 'pending', // will be 'confirmed' by indexer
+        status: 'confirmed',
         amount: draft.poolSize,
         tokenAddress: draft.poolTokenAddress,
-        poolAddress: tx.hash, // Use txHash as temporary pool address until indexed
+        poolAddress: poolAddr || tx.hash,
       });
       await this.txs.save(txRecord);
 
       return {
         draftId: draft.id,
         txHash: tx.hash,
+        poolAddress: poolAddr,
         status: 'success'
       };
     } catch (err: unknown) {
@@ -322,7 +384,6 @@ export class PoolsService {
   async sendToReserve(
     poolId: string,
     amount: bigint,
-    uptoQueuePosition: bigint,
   ) {
     const pool = await this.getPool(poolId);
     const result = await this.queue.addContractCall(
@@ -330,8 +391,8 @@ export class PoolsService {
         signerKey: 'fm_admin',
         contractAddress: pool.fundManagerAddress,
         abi: 'fund_manager',
-        functionName: 'sendToV2Reserve',
-        args: [amount.toString(), uptoQueuePosition.toString()],
+        functionName: 'sendToReserve',
+        args: [amount.toString()],
         meta: { poolId: pool.id },
       },
       { priority: 2 },
@@ -398,14 +459,17 @@ export class PoolsService {
       query.where('LOWER(p.borrowerAddress) = :uname', { uname });
     }
 
+
+    console.log('query', query.getQueryAndParameters());
+
     if (addr || uname) {
       pools = await query.orderBy('p.createdAt', 'DESC').getMany();
     }
 
     // Also fetch drafts by identifier
     const whereConditions: any[] = [];
-    if (addr) whereConditions.push({ indexed: false, borrowerAddress: addr });
-    if (uname) whereConditions.push({ indexed: false, borrowerAddress: uname });
+    if (addr) whereConditions.push({ indexed: false, borrowerIdentifier: addr });
+    if (uname) whereConditions.push({ indexed: false, borrowerIdentifier: uname });
 
     const drafts = whereConditions.length > 0
       ? await this.poolDrafts.find({ where: whereConditions, order: { createdAt: 'DESC' } })
@@ -421,14 +485,24 @@ export class PoolsService {
   }
 
   async setBorrowerWallet(borrowerIdentifier: string, tokenAddress: string, walletAddress: string) {
-    let wallet = await this.borrowerWallets.findOne({ where: { borrowerIdentifier, tokenAddress } });
-    if (!wallet) {
-      wallet = this.borrowerWallets.create({ borrowerIdentifier, tokenAddress, walletAddress });
-    } else {
-      wallet.walletAddress = walletAddress;
-    }
+    const wallet = this.borrowerWallets.create({ borrowerIdentifier, tokenAddress, walletAddress });
     await this.borrowerWallets.save(wallet);
     return wallet;
+  }
+
+  async updateBorrowerWallet(walletId: string, walletAddress: string) {
+    const wallet = await this.borrowerWallets.findOne({ where: { id: walletId } });
+    if (!wallet) throw new NotFoundException('Wallet not found');
+    wallet.walletAddress = walletAddress;
+    await this.borrowerWallets.save(wallet);
+    return wallet;
+  }
+
+  async deleteBorrowerWallet(walletId: string) {
+    const wallet = await this.borrowerWallets.findOne({ where: { id: walletId } });
+    if (!wallet) throw new NotFoundException('Wallet not found');
+    await this.borrowerWallets.remove(wallet);
+    return { deleted: true };
   }
 
   async lenderPositions(walletAddress: string) {
@@ -527,10 +601,226 @@ export class PoolsService {
       amount: dto.amount,
       tokenAddress: dto.tokenAddress || null,
       poolId: dto.poolId || null,
-      status: 'pending',
+      status: dto.status === 'confirmed' ? 'confirmed' : 'pending',
+      confirmedAt: dto.status === 'confirmed' ? new Date() : null,
     });
     await this.txs.save(tx);
     return { success: true, txId: tx.id };
+  }
+
+  // ─── Inline TX Confirmation (replaces indexer) ─────────────
+
+  async confirmTransaction(txHash: string, type: string, poolId?: string) {
+    if (!txHash) throw new BadRequestException('txHash is required');
+
+    const existingTx = await this.txs.findOne({ where: { txHash } });
+    if (existingTx && existingTx.status !== 'confirmed') {
+      existingTx.status = 'confirmed';
+      existingTx.confirmedAt = new Date();
+      await this.txs.save(existingTx);
+    }
+
+    switch (type) {
+      case 'activate': {
+        if (!poolId) break;
+        const pool = await this.pools.findOne({ where: { id: poolId } });
+        if (pool) {
+          pool.status = 'active';
+          await this.pools.save(pool);
+        }
+        break;
+      }
+      case 'pause': {
+        if (!poolId) break;
+        const pool = await this.pools.findOne({ where: { id: poolId } });
+        if (pool) {
+          pool.status = 'paused';
+          await this.pools.save(pool);
+        }
+        break;
+      }
+      case 'unpause': {
+        if (!poolId) break;
+        const pool = await this.pools.findOne({ where: { id: poolId } });
+        if (pool) {
+          pool.status = 'active';
+          await this.pools.save(pool);
+        }
+        break;
+      }
+      case 'close': {
+        if (!poolId) break;
+        const pool = await this.pools.findOne({ where: { id: poolId } });
+        if (pool) {
+          pool.status = 'closed';
+          await this.pools.save(pool);
+        }
+        break;
+      }
+      case 'create_pool': {
+        if (txHash) {
+          const draft = await this.drafts.findOne({ where: { txHash } });
+          if (draft && !draft.indexed) {
+            draft.indexed = true;
+            await this.drafts.save(draft);
+          }
+        }
+        break;
+      }
+      case 'deposit': {
+        if (!poolId) break;
+        const pool = await this.pools.findOne({ where: { id: poolId } });
+        if (!pool) break;
+        if (existingTx?.fromAddress && existingTx?.amount) {
+          const lenderAddr = existingTx.fromAddress.toLowerCase();
+          let pos = await this.positions.findOne({ where: { poolId, lenderAddress: lenderAddr } });
+          if (!pos) {
+            pos = this.positions.create({
+              poolId,
+              lenderAddress: lenderAddr,
+              lpTokenBalance: '0',
+              depositedAmount: '0',
+              currentValue: '0',
+              yieldEarned: '0',
+              firstDepositAt: new Date(),
+            });
+          }
+          const amt = BigInt(existingTx.amount || '0');
+          pos.depositedAmount = (BigInt(pos.depositedAmount) + amt).toString();
+          pos.currentValue = (BigInt(pos.currentValue) + amt).toString();
+          pos.lastUpdatedAt = new Date();
+          await this.positions.save(pos);
+        }
+        try {
+          const aum = await this.contracts.pool(pool.contractAddress).assetUnderManagement();
+          pool.assetUnderManagement = aum.toString();
+          await this.pools.save(pool);
+        } catch (e) { console.error('Failed to read AUM:', e); }
+        break;
+      }
+      case 'withdraw': {
+        if (!poolId) break;
+        const pool = await this.pools.findOne({ where: { id: poolId } });
+        if (!pool) break;
+        if (existingTx?.fromAddress && existingTx?.amount) {
+          const lenderAddr = existingTx.fromAddress.toLowerCase();
+          const pos = await this.positions.findOne({ where: { poolId, lenderAddress: lenderAddr } });
+          if (pos) {
+            const amt = BigInt(existingTx.amount || '0');
+            pos.currentValue = (BigInt(pos.currentValue) - amt).toString();
+            if (BigInt(pos.currentValue) < 0n) pos.currentValue = '0';
+            pos.withdrawnAmount = (BigInt(pos.withdrawnAmount || '0') + amt).toString();
+            pos.lastUpdatedAt = new Date();
+            await this.positions.save(pos);
+          }
+        }
+        try {
+          const aum = await this.contracts.pool(pool.contractAddress).assetUnderManagement();
+          pool.assetUnderManagement = aum.toString();
+          await this.pools.save(pool);
+        } catch (e) { console.error('Failed to read AUM:', e); }
+        break;
+      }
+      case 'repay': {
+        if (!poolId) break;
+        const pool = await this.pools.findOne({ where: { id: poolId } });
+        if (!pool) break;
+        if (existingTx?.fromAddress && existingTx?.amount) {
+          const walletAddr = existingTx.fromAddress.toLowerCase();
+          const bp = await this.borrowerPools.findOne({
+            where: { poolId, dedicatedWalletAddress: walletAddr },
+          });
+          if (bp) {
+            const amt = BigInt(existingTx.amount || '0');
+            bp.fundsRepaid = (BigInt(bp.fundsRepaid || '0') + amt).toString();
+            await this.borrowerPools.save(bp);
+          }
+        }
+        try {
+          const aum = await this.contracts.pool(pool.contractAddress).assetUnderManagement();
+          pool.assetUnderManagement = aum.toString();
+          await this.pools.save(pool);
+        } catch (e) { console.error('Failed to read AUM:', e); }
+        break;
+      }
+      case 'deploy_funds':
+      case 'send_to_reserve':
+      case 'sweep':
+      case 'refill': {
+        if (!poolId) break;
+        const pool = await this.pools.findOne({ where: { id: poolId } });
+        if (!pool) break;
+        if (type === 'deploy_funds' || type === 'send_to_reserve') {
+          if (existingTx?.amount) {
+            const bp = await this.borrowerPools.findOne({
+              where: { poolId },
+            });
+            if (bp) {
+              const amt = BigInt(existingTx.amount || '0');
+              bp.fundsDeployed = (BigInt(bp.fundsDeployed || '0') + amt).toString();
+              await this.borrowerPools.save(bp);
+            }
+          }
+        }
+        try {
+          const aum = await this.contracts.pool(pool.contractAddress).assetUnderManagement();
+          pool.assetUnderManagement = aum.toString();
+          await this.pools.save(pool);
+        } catch (e) { console.error('Failed to read AUM:', e); }
+        break;
+      }
+    }
+
+    return { confirmed: true, txHash, type };
+  }
+
+  // ─── Child Pool CRUD (replaces indexer V1PoolAdded) ────────
+
+  async addChildPool(poolId: string, v1PoolId: string, dedicatedWalletAddress: string, allocationBps?: number) {
+    const pool = await this.pools.findOne({ where: { id: poolId } });
+    if (!pool) throw new NotFoundException('Pool not found');
+
+    const existing = await this.borrowerPools.findOne({ where: { poolId, v1PoolId } });
+    if (existing) {
+      existing.dedicatedWalletAddress = dedicatedWalletAddress;
+      if (allocationBps !== undefined) existing.allocationBps = allocationBps;
+      await this.borrowerPools.save(existing);
+      return existing;
+    }
+
+    const row = this.borrowerPools.create({
+      poolId: pool.id,
+      fundManagerAddress: pool.fundManagerAddress,
+      v1PoolId,
+      allocationBps: allocationBps ?? 0,
+      dedicatedWalletAddress,
+    });
+    await this.borrowerPools.save(row);
+    return row;
+  }
+
+  async removeChildPool(poolId: string, v1PoolId: string) {
+    const row = await this.borrowerPools.findOne({ where: { poolId, v1PoolId } });
+    if (!row) throw new NotFoundException('Child pool not found');
+    await this.borrowerPools.remove(row);
+    return { removed: true };
+  }
+
+  async updateChildPool(poolId: string, v1PoolId: string, updates: { allocationBps?: number; dedicatedWalletAddress?: string }) {
+    const row = await this.borrowerPools.findOne({ where: { poolId, v1PoolId } });
+    if (!row) throw new NotFoundException('Child pool not found');
+    if (updates.allocationBps !== undefined) row.allocationBps = updates.allocationBps;
+    if (updates.dedicatedWalletAddress) row.dedicatedWalletAddress = updates.dedicatedWalletAddress;
+    await this.borrowerPools.save(row);
+    return row;
+  }
+
+  async getBorrowerWalletsForPool(poolId: string) {
+    const pool = await this.pools.findOne({ where: { id: poolId } });
+    if (!pool) throw new NotFoundException('Pool not found');
+    return this.borrowerWallets.find({
+      where: { tokenAddress: pool.poolTokenAddress },
+    });
   }
 
   private async recordAction(
@@ -570,7 +860,7 @@ export class PoolsService {
       apyBasisPoints: draft.apyBasisPoints,
       poolSize: draft.poolSize,
       assetUnderManagement: '0',
-      borrowerAddress: draft.borrowerAddress,
+      borrowerAddress: draft.borrowerIdentifier,
       feeCollectorAddress: draft.feeCollectorAddress,
       createdAt: draft.createdAt,
       totalDeposited: '0',

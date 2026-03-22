@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -41,7 +42,7 @@ class CreatePoolBody {
   @IsString() @MinLength(1)
   symbol: string;
 
-  @IsOptional() 
+  @IsOptional()
   @Type(() => Number)
   @IsInt() @Min(0)
   apyBasisPoints?: number;
@@ -98,6 +99,23 @@ class RecordActivityBody {
   @IsOptional() @IsString() toAddress?: string;
 }
 
+class ConfirmTxBody {
+  @IsString() txHash: string;
+  @IsString() type: string;
+  @IsOptional() @IsString() poolId?: string;
+}
+
+class AddChildPoolBody {
+  @IsString() v1PoolId: string;
+  @IsString() dedicatedWalletAddress: string;
+  @IsOptional() @IsInt() allocationBps?: number;
+}
+
+class UpdateChildPoolBody {
+  @IsOptional() @IsInt() allocationBps?: number;
+  @IsOptional() @IsString() dedicatedWalletAddress?: string;
+}
+
 // ─── Pool CRUD + Actions ─────────────────────────────────────
 
 @Controller('pools')
@@ -105,7 +123,7 @@ export class PoolsController {
   constructor(
     private readonly pools: PoolsService,
     private readonly config: ConfigService,
-  ) {}
+  ) { }
 
   private getRequiredAddress(
     field: 'poolManagerAddress' | 'oracleManagerAddress' | 'feeCollectorAddress',
@@ -163,7 +181,7 @@ export class PoolsController {
   @Roles('borrower')
   @UseInterceptors(FileInterceptor('file'))
   create(
-    @CurrentUser() user: JwtUser, 
+    @CurrentUser() user: JwtUser,
     @Body() body: CreatePoolBody,
     @UploadedFile() file?: Express.Multer.File,
   ) {
@@ -239,7 +257,7 @@ export class PoolsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('manager')
   sendReserve(@Param('id') id: string, @Body() body: SendReserveBody) {
-    return this.pools.sendToReserve(id, BigInt(body.amount), BigInt(body.uptoQueuePosition));
+    return this.pools.sendToReserve(id, BigInt(body.amount));
   }
 
   @Post('record-activity')
@@ -247,13 +265,47 @@ export class PoolsController {
   recordActivity(@CurrentUser() user: JwtUser, @Body() body: RecordActivityBody) {
     return this.pools.recordManualActivity(user.walletAddress, body);
   }
+
+  @Post('confirm-tx')
+  @UseGuards(JwtAuthGuard)
+  confirmTx(@Body() body: ConfirmTxBody) {
+    return this.pools.confirmTransaction(body.txHash, body.type, body.poolId);
+  }
+
+  @Post(':id/child-pools')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('manager')
+  addChildPool(@Param('id') id: string, @Body() body: AddChildPoolBody) {
+    return this.pools.addChildPool(id, body.v1PoolId, body.dedicatedWalletAddress, body.allocationBps);
+  }
+
+  @Delete(':id/child-pools/:v1PoolId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('manager')
+  removeChildPool(@Param('id') id: string, @Param('v1PoolId') v1PoolId: string) {
+    return this.pools.removeChildPool(id, v1PoolId);
+  }
+
+  @Patch(':id/child-pools/:v1PoolId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('manager')
+  updateChildPool(@Param('id') id: string, @Param('v1PoolId') v1PoolId: string, @Body() body: UpdateChildPoolBody) {
+    return this.pools.updateChildPool(id, v1PoolId, body);
+  }
+
+  @Get(':id/borrower-wallets')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('manager')
+  getBorrowerWallets(@Param('id') id: string) {
+    return this.pools.getBorrowerWalletsForPool(id);
+  }
 }
 
 // ─── Borrower Routes ─────────────────────────────────────────
 
 @Controller('borrower')
 export class BorrowerRoutesController {
-  constructor(private readonly pools: PoolsService) {}
+  constructor(private readonly pools: PoolsService) { }
 
   @Get('pools')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -277,6 +329,21 @@ export class BorrowerRoutesController {
       throw new BadRequestException('tokenAddress and walletAddress are required');
     }
     return this.pools.setBorrowerWallet(user.username || user.walletAddress, body.tokenAddress, body.walletAddress);
+  }
+
+  @Patch('wallets/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('borrower')
+  updateWallet(@Param('id') id: string, @Body() body: { walletAddress: string }) {
+    if (!body.walletAddress) throw new BadRequestException('walletAddress is required');
+    return this.pools.updateBorrowerWallet(id, body.walletAddress);
+  }
+
+  @Delete('wallets/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('borrower')
+  deleteWallet(@Param('id') id: string) {
+    return this.pools.deleteBorrowerWallet(id);
   }
 
   @Post('repay')
@@ -310,7 +377,7 @@ export class BorrowerRoutesController {
 
 @Controller('lender')
 export class LenderRoutesController {
-  constructor(private readonly pools: PoolsService) {}
+  constructor(private readonly pools: PoolsService) { }
 
   @Get('positions')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -342,7 +409,7 @@ export class LenderRoutesController {
 
 @Controller('manager')
 export class ManagerRoutesController {
-  constructor(private readonly poolsService: PoolsService) {}
+  constructor(private readonly poolsService: PoolsService) { }
 
   @Get('aum')
   @UseGuards(JwtAuthGuard, RolesGuard)

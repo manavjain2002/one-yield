@@ -32,6 +32,9 @@ export class LenderPositionEntity {
   depositedAmount: string;
 
   @Column({ type: 'bigint', default: '0' })
+  withdrawnAmount: string;
+
+  @Column({ type: 'bigint', default: '0' })
   currentValue: string;
 
   @Column({ type: 'bigint', default: '0' })

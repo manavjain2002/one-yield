@@ -36,3 +36,38 @@ export function useSetBorrowerWallet() {
     },
   });
 }
+
+export function useUpdateBorrowerWallet() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, walletAddress }: { id: string; walletAddress: string }) => {
+      const { data } = await api.patch<BorrowerWallet>(`/borrower/wallets/${id}`, { walletAddress });
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('Wallet updated successfully');
+      void queryClient.invalidateQueries({ queryKey: ['borrower', 'wallets'] });
+    },
+    onError: (e) => {
+      toast.error(getErrorMessage(e));
+    },
+  });
+}
+
+export function useDeleteBorrowerWallet() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/borrower/wallets/${id}`);
+    },
+    onSuccess: () => {
+      toast.success('Wallet removed');
+      void queryClient.invalidateQueries({ queryKey: ['borrower', 'wallets'] });
+    },
+    onError: (e) => {
+      toast.error(getErrorMessage(e));
+    },
+  });
+}

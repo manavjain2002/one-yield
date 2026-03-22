@@ -14,6 +14,8 @@ export interface Pool {
   borrowerAddress: string; // 0x Address
   totalRequested: number; // Keep for some simple UI elements
   totalReceived: number;
+  totalWithdrawn: number;
+  totalFunded: number;
   totalRepaid: number;
   poolSize: string; // Raw BigInt string from db
   totalDeposited: string; // Raw BigInt string from db
@@ -38,6 +40,7 @@ export interface LenderPosition {
   poolName: string;
   contractAddress?: string;
   deposited: number;
+  withdrawn: number;
   currentValue: number;
   yield: number;
   pending: number;
@@ -65,6 +68,8 @@ export const mockPools: Pool[] = [
     borrowerAddress: '0x1234567890abcdef1234567890abcdef12345678',
     totalRequested: 500000,
     totalReceived: 375000,
+    totalWithdrawn: 0,
+    totalFunded: 375000,
     totalRepaid: 125000,
     poolSize: '500000000000',
     totalDeposited: '375000000000',
@@ -92,6 +97,8 @@ export const mockPools: Pool[] = [
     borrowerAddress: '0x1234567890abcdef1234567890abcdef12345678',
     totalRequested: 1000000,
     totalReceived: 820000,
+    totalWithdrawn: 0,
+    totalFunded: 820000,
     totalRepaid: 320000,
     poolSize: '1000000000000',
     totalDeposited: '820000000000',
@@ -118,6 +125,8 @@ export const mockPools: Pool[] = [
     borrowerAddress: '0xabcdef1234567890abcdef1234567890abcdef12',
     totalRequested: 250000,
     totalReceived: 250000,
+    totalWithdrawn: 0,
+    totalFunded: 250000,
     totalRepaid: 250000,
     poolSize: '250000000000',
     totalDeposited: '250000000000',
@@ -143,6 +152,8 @@ export const mockPools: Pool[] = [
     borrowerAddress: '0xfedcba0987654321fedcba0987654321fedcba09',
     totalRequested: 750000,
     totalReceived: 180000,
+    totalWithdrawn: 0,
+    totalFunded: 0,
     totalRepaid: 0,
     poolSize: '750000000000',
     totalDeposited: '180000000000',
@@ -160,8 +171,8 @@ export const mockPools: Pool[] = [
 ];
 
 export const mockLenderPositions: LenderPosition[] = [
-  { poolId: 'pool-1', poolName: 'OneYield Growth Fund', deposited: 50000, currentValue: 53250, yield: 3250, pending: 850, lpTokens: 50000 },
-  { poolId: 'pool-2', poolName: 'RWA Bridge Capital', deposited: 100000, currentValue: 108500, yield: 8500, pending: 2100, lpTokens: 100000 },
+  { poolId: 'pool-1', poolName: 'OneYield Growth Fund', deposited: 50000, withdrawn: 0, currentValue: 53250, yield: 3250, pending: 850, lpTokens: 50000 },
+  { poolId: 'pool-2', poolName: 'RWA Bridge Capital', deposited: 100000, withdrawn: 0, currentValue: 108500, yield: 8500, pending: 2100, lpTokens: 100000 },
 ];
 
 export const mockTxHistory: TxHistory[] = [

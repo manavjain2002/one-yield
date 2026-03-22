@@ -87,6 +87,8 @@ function EventsBridge() {
 }
 
 import { AuthOverlay } from "./components/AuthOverlay";
+import { TransactionProvider } from "./contexts/TransactionContext";
+import { TransactionOverlay } from "./components/TransactionOverlay";
 
 function AppRoutes() {
   return (
@@ -138,13 +140,16 @@ const App = () => (
         <RainbowKitWrapper>
           <TooltipProvider>
             <WalletProvider>
-              <AuthOverlay />
-              <Toaster />
-              <Sonner />
-              <BrowserRouter>
-                <EventsBridge />
-                <AppRoutes />
-              </BrowserRouter>
+              <TransactionProvider>
+                <AuthOverlay />
+                <TransactionOverlay />
+                <Toaster />
+                <Sonner />
+                <BrowserRouter>
+                  <EventsBridge />
+                  <AppRoutes />
+                </BrowserRouter>
+              </TransactionProvider>
             </WalletProvider>
           </TooltipProvider>
         </RainbowKitWrapper>
