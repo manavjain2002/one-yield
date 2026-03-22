@@ -31,7 +31,7 @@ import {
   coinbaseWallet 
 } from '@rainbow-me/rainbowkit/wallets';
 import { WagmiProvider, http, createConfig } from 'wagmi';
-import { hederaTestnet } from 'wagmi/chains';
+import { wagmiTargetChain } from '@/lib/wagmi-target-chain';
 
 const projectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || '';
 
@@ -60,9 +60,9 @@ const connectors = connectorsForWallets(
 
 const config = createConfig({
   connectors,
-  chains: [hederaTestnet],
+  chains: [wagmiTargetChain],
   transports: {
-    [hederaTestnet.id]: http(),
+    [wagmiTargetChain.id]: http(),
   },
   // Ensure we don't try to auto-connect to WalletConnect if no ID
   ssr: true, 

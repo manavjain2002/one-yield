@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { api, setAuthToken, loadStoredToken, isApiConfigured, getErrorMessage } from '@/lib/api';
-import { useAccount, useDisconnect, useBalance, useSignMessage } from 'wagmi';
+import { useAccount, useDisconnect, useBalance, useSignMessage, useChainId, useSwitchChain } from 'wagmi';
+import { wagmiTargetChain } from '@/lib/wagmi-target-chain';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
 
 export type WalletKind = 'metamask' | 'walletconnect';
@@ -58,6 +59,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const { openConnectModal } = useConnectModal();
   const { data: balanceData } = useBalance({ address: wagmiAddress });
   const { signMessageAsync } = useSignMessage();
+  const chainId = useChainId();
+  const { switchChainAsync } = useSwitchChain();
+  const web3LoginInFlight = useRef(false);
 
   const [state, setState] = useState<WalletState>({
     isConnected: false,
@@ -152,53 +156,73 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     if (openConnectModal) {
       openConnectModal();
     } else {
-      toast.error('Connect modal not available');
+      console.warn('[WalletContext] Connect modal not available');
     }
   }, [openConnectModal]);
 
   const loginWeb3 = useCallback(async (walletAddress: string) => {
+    if (web3LoginInFlight.current) return;
+    web3LoginInFlight.current = true;
     try {
-      // 1. Get challenge
-      const { data: challenge } = await api.post<{ challengeId: string; message: string }>(
-        '/auth/challenge',
-        { walletAddress }
-      );
+      if (chainId !== wagmiTargetChain.id) {
+        try {
+          if (!switchChainAsync) {
+            console.warn(
+              `[WalletContext] Cannot auto-switch chain; use ${wagmiTargetChain.name} (chain ${wagmiTargetChain.id}).`,
+            );
+            return;
+          }
+          await switchChainAsync({ chainId: wagmiTargetChain.id });
+        } catch (e) {
+          console.error('[WalletContext] Network switch failed:', e);
+          return;
+        }
+      }
 
-      // 2. Sign message
-      const signatureHex = await signMessageAsync({ 
-        account: walletAddress as `0x${string}`,
-        message: challenge.message 
-      });
+      try {
+        // 1. Get challenge
+        const { data: challenge } = await api.post<{ challengeId: string; message: string }>(
+          '/auth/challenge',
+          { walletAddress }
+        );
 
-      // 3. Verify and login
-      const { data: auth } = await api.post<{
-        accessToken: string;
-        role: UserRole;
-        walletAddress: string;
-      }>('/auth/verify', {
-        walletAddress,
-        challengeId: challenge.challengeId,
-        signatureHex,
-      });
+        // 2. Sign message
+        const signatureHex = await signMessageAsync({ 
+          account: walletAddress as `0x${string}`,
+          message: challenge.message 
+        });
 
-      setAuthToken(auth.accessToken);
-      setState((prev) => ({
-        ...prev,
-        isConnected: true,
-        address: auth.walletAddress,
-        accessToken: auth.accessToken,
-        role: auth.role,
-        needsReAuth: false,
-      }));
-      
-      toast.success('Web3 identity verified');
-    } catch (e) {
-      console.error('[WalletContext] Web3 login failed:', e);
-      toast.error('Web3 login failed: ' + getErrorMessage(e));
-      // If login fails, we might want to disconnect to avoid being stuck in a half-connected state
-      disconnect();
+        // 3. Verify and login
+        const { data: auth } = await api.post<{
+          accessToken: string;
+          role: UserRole;
+          walletAddress: string;
+        }>('/auth/verify', {
+          walletAddress,
+          challengeId: challenge.challengeId,
+          signatureHex,
+        });
+
+        setAuthToken(auth.accessToken);
+        setState((prev) => ({
+          ...prev,
+          isConnected: true,
+          address: auth.walletAddress,
+          accessToken: auth.accessToken,
+          role: auth.role,
+          needsReAuth: false,
+        }));
+        
+        toast.success('Web3 identity verified');
+      } catch (e) {
+        console.error('[WalletContext] Web3 login failed:', e);
+        // If login fails, we might want to disconnect to avoid being stuck in a half-connected state
+        disconnect();
+      }
+    } finally {
+      web3LoginInFlight.current = false;
     }
-  }, [signMessageAsync, disconnect]);
+  }, [chainId, switchChainAsync, signMessageAsync, disconnect]);
 
   // Auth verification effect when address changes
   useEffect(() => {
