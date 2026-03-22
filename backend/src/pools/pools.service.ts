@@ -450,7 +450,8 @@ export class PoolsService {
     const addr = walletAddress?.trim().toLowerCase();
     const uname = username?.trim().toLowerCase();
 
-    const query = this.pools.createQueryBuilder('p');
+    const query = this.pools.createQueryBuilder('p')
+      .leftJoinAndSelect('p.borrowerPools', 'bp');
     if (addr && uname) {
       query.where('(LOWER(p.borrowerAddress) = :addr OR LOWER(p.borrowerAddress) = :uname)', { addr, uname });
     } else if (addr) {
@@ -465,6 +466,7 @@ export class PoolsService {
     if (addr || uname) {
       pools = await query.orderBy('p.createdAt', 'DESC').getMany();
     }
+    console.log("🚀 ~ PoolsService ~ borrowerPoolsFor ~ pools:", pools)
 
     // Also fetch drafts by identifier
     const whereConditions: any[] = [];

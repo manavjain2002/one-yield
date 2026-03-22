@@ -17,6 +17,7 @@ import { useSearchParams } from 'react-router-dom';
 import { ChildPoolsManager } from './ChildPoolsManager';
 import { Loader2 } from 'lucide-react';
 import { useTransaction } from '@/contexts/TransactionContext';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 export default function ManagerPools() {
   const { data: summary } = useManagerSummary();
@@ -35,12 +36,9 @@ export default function ManagerPools() {
   useEffect(() => {
     if (!pools.length) { setSelectedPool(null); return; }
     setSelectedPool((prev) => {
-      if (initialPoolId) {
-        const p = pools.find(x => x.id === initialPoolId);
-        if (p) return p;
-      }
-      if (prev && pools.some((p) => p.id === prev.id)) return prev;
-      return pools[0];
+      const targetId = initialPoolId || prev?.id;
+      const fresh = pools.find(p => p.id === targetId);
+      return fresh ?? pools[0];
     });
   }, [pools, initialPoolId]);
 
@@ -82,6 +80,21 @@ export default function ManagerPools() {
     },
     enabled: !!selectedPool?.contractAddress,
   });
+
+  const { data: totalAllocationOnChain = 0 } = useQuery({
+    queryKey: ['total-allocation', selectedPool?.fundManagerAddress],
+    queryFn: async () => {
+      if (!selectedPool?.fundManagerAddress) return 0;
+      const fm = getAssetManagerRead(selectedPool.fundManagerAddress);
+      const val = await fm.totalAllocation();
+      return Number(val);
+    },
+    enabled: !!selectedPool?.fundManagerAddress,
+    refetchInterval: 15000,
+  });
+
+  const isAllocationComplete = totalAllocationOnChain === 10000;
+  const poolTokenName = selectedPool?.poolTokenName || 'USDC';
 
   const { data: txHistory = [] } = usePoolTxHistory(selectedPool?.id);
 
@@ -148,8 +161,8 @@ export default function ManagerPools() {
             <h3 className="text-base font-semibold">Fund Distribution</h3>
             <div className="space-y-3">
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>In Pool (Liquid): ${poolFundsNum.toLocaleString()}</span>
-                <span>With Fund Manager: ${aumNum.toLocaleString()}</span>
+                <span>In Pool (Liquid): {poolFundsNum.toLocaleString()} {poolTokenName}</span>
+                <span>With Fund Manager: {aumNum.toLocaleString()} {poolTokenName}</span>
               </div>
               <div className="h-4 w-full rounded-full bg-secondary/40 overflow-hidden flex">
                 <div className="h-full bg-primary transition-all" style={{ width: `${liquidPct}%` }} />
@@ -183,23 +196,32 @@ export default function ManagerPools() {
                 <p className="text-xs font-bold uppercase tracking-widest text-primary">Deploy Funds</p>
                 <span className="text-[10px] font-mono text-muted-foreground">Release to Borrowers</span>
               </div>
-              <Button
-                className="w-full gradient-primary shadow-lg glow-primary font-bold h-10 rounded-xl"
-                disabled={aumNum === 0 || actions.releaseToBorrowers.isPending || isPoolPending || isPoolClosed}
-                onClick={() => { startTransaction('Deploying funds...'); actions.releaseToBorrowers.mutateAsync(selectedPool).then(() => { void refetchBalances(); }).finally(endTransaction); }}
-              >
-                {actions.releaseToBorrowers.isPending ? 'Deploying...' : `Deploy $${aumNum.toLocaleString()}`}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="block">
+                    <Button
+                      className="w-full gradient-primary shadow-lg glow-primary font-bold h-10 rounded-xl"
+                      disabled={aumNum === 0 || actions.releaseToBorrowers.isPending || isPoolPending || isPoolClosed || !isAllocationComplete}
+                      onClick={() => { startTransaction('Deploying funds...'); actions.releaseToBorrowers.mutateAsync(selectedPool).then(() => { void refetchBalances(); }).finally(endTransaction); }}
+                    >
+                      {actions.releaseToBorrowers.isPending ? 'Deploying...' : `Deploy ${aumNum.toLocaleString()} ${poolTokenName}`}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {!isAllocationComplete ? 'Allocation must total 100% before deploying' : aumNum === 0 ? 'No funds available to deploy' : 'Release funds to borrower wallets'}
+                </TooltipContent>
+              </Tooltip>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="p-4 rounded-xl border border-border bg-secondary/20 space-y-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Transfer to Reserve (Sweep)</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Transfer to Reserve (Sweep) — {poolTokenName}</p>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
                     <Input
                       type="number"
-                      placeholder="Amount (USDC)"
+                      placeholder={`Amount (${poolTokenName})`}
                       value={sweepAmount}
                       onChange={e => setSweepAmount(e.target.value)}
                       className="h-9 text-sm bg-secondary/30 pr-14"
@@ -231,12 +253,12 @@ export default function ManagerPools() {
                 </div>
               </div>
               <div className="p-4 rounded-xl border border-border bg-secondary/20 space-y-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Transfer to Available (Refill)</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Transfer to Available (Refill) — {poolTokenName}</p>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
                     <Input
                       type="number"
-                      placeholder="Amount (USDC)"
+                      placeholder={`Amount (${poolTokenName})`}
                       value={refillAmount}
                       onChange={e => setRefillAmount(e.target.value)}
                       className="h-9 text-sm bg-secondary/30 pr-14"
@@ -280,7 +302,10 @@ export default function ManagerPools() {
                 <Button
                   className="w-full gradient-primary shadow-lg glow-primary font-bold h-11 rounded-xl"
                   disabled={actions.activatePool.isPending}
-                  onClick={() => { startTransaction('Activating pool...'); actions.activatePool.mutateAsync(selectedPool).finally(endTransaction); }}
+                  onClick={() => {
+                    startTransaction('Activating pool...');
+                    actions.activatePool.mutateAsync(selectedPool).finally(endTransaction);
+                  }}
                 >
                   {actions.activatePool.isPending ? 'Activating...' : 'Activate & Initialize Pool'}
                 </Button>

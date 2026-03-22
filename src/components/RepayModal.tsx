@@ -9,6 +9,8 @@ import { AlertCircle, ArrowRight, CheckCircle2, ChevronLeft, Wallet } from 'luci
 import { useAccount } from 'wagmi';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
 import { parseUnits } from 'ethers';
+import { useQuery } from '@tanstack/react-query';
+import { getAssetManagerRead } from '@/lib/contracts';
 
 interface RepayModalProps {
   isOpen: boolean;
@@ -18,26 +20,48 @@ interface RepayModalProps {
   symbol: string;
   poolTokenAddress: string;
   fundManagerAddress: string;
-  borrowerPools: { v1PoolId: string; dedicatedWalletAddress: string }[];
+  borrowerPools?: { v1PoolId: string; dedicatedWalletAddress: string }[] | null;
 }
 
-export function RepayModal({ 
-  isOpen, onClose, poolId, poolName, symbol, poolTokenAddress, fundManagerAddress, borrowerPools
+export function RepayModal({
+  isOpen, onClose, poolId, poolName, symbol, poolTokenAddress, fundManagerAddress, borrowerPools = []
 }: RepayModalProps) {
-  console.log('poolId', poolId);
-  console.log('poolName', poolName);
-  console.log('symbol', symbol);
-  console.log('poolTokenAddress', poolTokenAddress);
-  console.log('fundManagerAddress', fundManagerAddress);
   const [step, setStep] = useState<'input' | 'confirm'>('input');
   const [amount, setAmount] = useState('');
   const [fee, setFee] = useState('0');
-  
+
   const { isConnected, address } = useAccount();
   const { openConnectModal } = useConnectModal();
 
-  // Find matching borrower pool configuration
-  const matchedBorrowerPool = borrowerPools?.find(
+  // Fetch on-chain v1Pools when borrowerPools from DB is empty (e.g. child pools added only on-chain)
+  const { data: onChainPools = [] } = useQuery({
+    queryKey: ['repay-v1-pools', fundManagerAddress],
+    queryFn: async () => {
+      if (!fundManagerAddress) return [];
+      const fm = getAssetManagerRead(fundManagerAddress);
+      const count = await fm.totalV1Pools();
+      const pools: { v1PoolId: string; wallet: string }[] = [];
+      for (let i = 0; i < Number(count); i++) {
+        try {
+          const result = await fm.v1Pools(i);
+          const v1Id = result.v1PoolId ?? result[0];
+          const wallet = result.wallet ?? result[2] ?? (await fm.dedicatedWallet(v1Id));
+          pools.push({ v1PoolId: String(v1Id), wallet: String(wallet) });
+        } catch { /* skip */ }
+      }
+      return pools;
+    },
+    enabled: isOpen && !!fundManagerAddress && (!borrowerPools || borrowerPools.length === 0),
+    refetchInterval: 10000,
+  });
+
+  // Use borrowerPools from DB if available, else fall back to on-chain data
+  const authorizedPools = (borrowerPools?.length ? borrowerPools : onChainPools.map(p => ({
+    v1PoolId: p.v1PoolId,
+    dedicatedWalletAddress: p.wallet,
+  }))) as { v1PoolId: string; dedicatedWalletAddress: string }[];
+
+  const matchedBorrowerPool = authorizedPools?.find(
     (bp) => bp.dedicatedWalletAddress?.toLowerCase() === address?.toLowerCase()
   );
   const isAuthorized = !!matchedBorrowerPool;
@@ -50,7 +74,7 @@ export function RepayModal({
   });
 
   const totalHuman = (parseFloat(amount) || 0) + (parseFloat(fee) || 0);
-  
+
   // Convert to BigInt for allowance comparison
   let totalWei = 0n;
   try {
@@ -135,7 +159,7 @@ export function RepayModal({
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md glass-card border-border/50 p-0 overflow-hidden">
         <div className="gradient-primary h-1.5 w-full" />
-        
+
         <div className="p-6 space-y-6">
           <DialogHeader>
             <DialogTitle className="text-xl flex items-center gap-2">
@@ -232,21 +256,25 @@ export function RepayModal({
 
           <div className="flex items-center gap-3 pt-2">
             {step === 'confirm' && (
-              <Button 
-                variant="ghost" 
-                onClick={() => setStep('input')} 
-                disabled={isPending} 
+              <Button
+                variant="ghost"
+                onClick={() => setStep('input')}
+                disabled={isPending}
                 className="rounded-xl flex-1 h-12 font-bold text-muted-foreground"
               >
                 <ChevronLeft className="w-4 h-4 mr-1" /> Back
               </Button>
             )}
-            
-            <Button 
-              onClick={step === 'input' ? handleNext : handleActionClick} 
+
+            <Button
+              onClick={step === 'input' ? handleNext : handleActionClick}
               disabled={isPending || (isConnected && !isAuthorized)}
               className={`rounded-xl h-12 font-bold shadow-lg transition-all active:scale-95 ${
-                step === 'confirm' ? 'flex-[2] gradient-primary glow-primary' : 'w-full gradient-primary'
+                step === 'confirm' ? 'flex-[2]' : 'w-full'
+              } ${
+                buttonText === 'Connect Wallet to Repay'
+                  ? 'bg-primary text-primary-foreground hover:opacity-90 shadow-primary/30'
+                  : 'gradient-primary glow-primary'
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               {step === 'input' ? (

@@ -13,7 +13,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 type BorrowerWallet = { id: string; walletAddress: string; tokenAddress: string; borrowerIdentifier: string };
 
 export function ChildPoolsManager({ pool }: { pool: Pool }) {
-  console.log('pool123----------------', pool, !!pool.fundManagerAddress);
   const actions = useManagerActions();
   const queryClient = useQueryClient();
   const { startTransaction, endTransaction } = useTransaction();
@@ -34,19 +33,12 @@ export function ChildPoolsManager({ pool }: { pool: Pool }) {
     queryKey: ['on-chain-pools', pool.fundManagerAddress, pool.id],
   
     queryFn: async () => {
-      console.log('🔥 Fetching on-chain pools');
-  
       const fm = getAssetManagerRead(pool.fundManagerAddress);
       const count = await fm.totalV1Pools();
-      console.log('count', count);
-  
       const pools = [];
       for (let i = 0; i < Number(count); i++) {
         const result = await fm.v1Pools(i);
-        console.log('result', result);
-
-      const wallet = await fm.dedicatedWallet(result.v1PoolId);
-      console.log('wallet', wallet);
+        const wallet = await fm.dedicatedWallet(result.v1PoolId);
   
         pools.push({
           index: i,
@@ -119,12 +111,9 @@ export function ChildPoolsManager({ pool }: { pool: Pool }) {
 
   // --- Match borrower wallets against on-chain pools ---
   const onChainWalletSet = new Set(onChainPools.map(p => p.wallet.toLowerCase()));
-  console.log('onChainWalletSet', onChainWalletSet);
-  console.log('onChainPools', onChainPools);
   const unmatchedWallets = borrowerWallets.filter(
     bw => !onChainWalletSet.has(bw.walletAddress.toLowerCase()),
   );
-  console.log('unmatchedWallets', unmatchedWallets);
   // --- Handlers ---
   const handleAdd = async (walletAddress: string) => {
     const allocationVal = parseInt(allocationInputs[walletAddress] || '0');
@@ -264,7 +253,7 @@ export function ChildPoolsManager({ pool }: { pool: Pool }) {
                         <Button
                           size="sm"
                           variant="secondary"
-                          className="h-8 text-xs px-3"
+                          className="h-8 text-xs px-3 hover:bg-primary/20 hover:text-primary transition-colors"
                           disabled={!allocationInputs[cp.wallet]}
                           onClick={() => handleUpdateAllocation(cp.index, cp.wallet)}
                         >
@@ -298,8 +287,17 @@ export function ChildPoolsManager({ pool }: { pool: Pool }) {
       {/* Unmatched borrower wallets (not yet on-chain) */}
       {unmatchedWallets.length > 0 && (
         <div className="border-t border-border/30 pt-4">
+          <div className="flex items-center gap-2 p-3 rounded-xl bg-primary/10 border border-primary/20 mb-3">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0 text-primary" />
+            <div>
+              <p className="text-sm font-bold text-foreground">Action Required</p>
+              <p className="text-xs text-muted-foreground">
+                Add these wallets to on-chain allocations below. Enter allocation % and click + to configure each wallet before deploying funds.
+              </p>
+            </div>
+          </div>
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">
-            Available Borrower Wallets (not yet on-chain)
+            Wallets to Add (enter % and click +)
           </p>
           <div className="space-y-2">
             {unmatchedWallets.map(bw => (
