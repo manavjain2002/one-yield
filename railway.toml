@@ -1,0 +1,6 @@
+# Config-as-code overrides dashboard. Forces this service to use the repo-root
+# Node static server (serve-static.mjs), not an old nginx image from cache/detection.
+# dockerfilePath is resolved relative to each service’s Root Directory (repo root or /backend).
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
