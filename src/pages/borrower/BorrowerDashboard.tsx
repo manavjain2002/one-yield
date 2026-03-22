@@ -56,6 +56,25 @@ export default function BorrowerDashboard() {
     },
   });
 
+  const { data: aumMap = {} } = useQuery({
+    queryKey: ['borrower-pool-aum', pools.map((p) => p.contractAddress).join(',')],
+    queryFn: async () => {
+      const result: Record<string, bigint> = {};
+      for (const p of pools) {
+        if (!p.contractAddress || p.contractAddress === p.id) continue;
+        try {
+          const contract = getLendingPoolRead(p.contractAddress);
+          result[p.id] = await contract.assetUnderManagement();
+        } catch {
+          result[p.id] = 0n;
+        }
+      }
+      return result;
+    },
+    enabled: pools.length > 0,
+    refetchInterval: 30000,
+  });
+
   const handleCreate = async () => {
     if (!name.trim()) { toast.error('Pool Name is required.'); return; }
     if (!symbol.trim()) { toast.error('Symbol is required.'); return; }
@@ -91,7 +110,6 @@ export default function BorrowerDashboard() {
     (s, p) => s + outstandingPrincipalNominalFromBorrowerPoolRows(p.borrowerPools),
     0,
   );
-  console.log('totalPrincipal', totalPrincipal);
   const totalCoupon = poolsForDebtMetrics.reduce(
     (s, p) =>
       s +
@@ -101,25 +119,7 @@ export default function BorrowerDashboard() {
       ),
     0,
   );
-  console.log('totalCoupon', totalCoupon);
   const totalOutstanding = totalPrincipal + totalCoupon;
-  console.log('totalOutstanding', totalOutstanding);
-  const { data: aumMap = {} } = useQuery({
-    queryKey: ['borrower-pool-aum', pools.map(p => p.contractAddress).join(',')],
-    queryFn: async () => {
-      const result: Record<string, bigint> = {};
-      for (const p of pools) {
-        if (!p.contractAddress || p.contractAddress === p.id) continue;
-        try {
-          const contract = getLendingPoolRead(p.contractAddress);
-          result[p.id] = await contract.assetUnderManagement();
-        } catch { result[p.id] = 0n; }
-      }
-      return result;
-    },
-    enabled: pools.length > 0,
-    refetchInterval: 30000,
-  });
 
   return (
     <DashboardLayout>
@@ -167,7 +167,7 @@ export default function BorrowerDashboard() {
           </div>
 
           <div className="space-y-3">
-            {pools.length > 0 ? pools.map(pool => {
+            {activePools.length > 0 ? activePools.map((pool) => {
               const isExpanded = expandedPoolId === pool.id;
               const principal = outstandingPrincipalNominalFromBorrowerPoolRows(pool.borrowerPools);
               const coupon = estimatedCouponNominalFromPrincipal(principal, pool.apy);
@@ -205,7 +205,10 @@ export default function BorrowerDashboard() {
                       </div>
                       <div className="text-center sm:text-left min-w-[100px]">
                         <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-0.5">Outstanding</p>
-                        <p className="font-bold text-destructive">{Math.round(outstanding).toLocaleString()} {tok}</p>
+                        <p className="font-bold text-destructive">
+                          {outstanding.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}{' '}
+                          {tok}
+                        </p>
                       </div>
                     </div>
 
@@ -276,7 +279,11 @@ export default function BorrowerDashboard() {
             }) : (
               <div className="py-16 text-center glass-card rounded-2xl border-dashed border-border/50 space-y-4">
                 <Clock className="h-8 w-8 mx-auto opacity-30" />
-                <p className="text-muted-foreground">No active pools found.</p>
+                <p className="text-muted-foreground">
+                  {pools.length > 0
+                    ? 'No active or pending pools. View all pools for paused or closed positions.'
+                    : 'No active pools found.'}
+                </p>
                 <Button onClick={() => setShowCreatePool(true)} className="gradient-primary rounded-xl font-bold px-6 shadow-md">
                   <Plus className="h-4 w-4 mr-2" /> Create Pool
                 </Button>

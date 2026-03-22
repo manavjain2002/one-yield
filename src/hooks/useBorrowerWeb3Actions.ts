@@ -15,6 +15,20 @@ export function useBorrowerWeb3Actions({ poolTokenAddress, fundManagerAddress, p
   const { address: wagmiAddress, isConnected } = useAccount();
   const queryClient = useQueryClient();
 
+  const decimalsQuery = useQuery({
+    queryKey: ['erc20-decimals', poolTokenAddress],
+    queryFn: async () => {
+      if (!poolTokenAddress) return 6;
+      try {
+        return Number(await getERC20Read(poolTokenAddress).decimals());
+      } catch {
+        return 6;
+      }
+    },
+    enabled: !!poolTokenAddress,
+    staleTime: 60_000,
+  });
+
   const confirmTx = async (txHash: string, type: string, poolId?: string, v1PoolId?: string) => {
     try {
       await api.post('/pools/confirm-tx', { txHash, type, poolId, v1PoolId });
@@ -35,21 +49,23 @@ export function useBorrowerWeb3Actions({ poolTokenAddress, fundManagerAddress, p
     refetchInterval: 5000,
   });
 
-  // 2. Approve Token Mapping
+  // 2. Approve Token Mapping (use string amounts + on-chain decimals — never parseFloat totals, or parseUnits throws on float noise)
   const approve = useMutation({
-    mutationFn: async (amountHuman: string) => {
+    mutationFn: async ({ amount, fee = '0' }: { amount: string; fee?: string }) => {
       if (!isConnected || !wagmiAddress) throw new Error('Wallet not connected');
       if (!fundManagerAddress || !poolTokenAddress) throw new Error('Contract addresses missing');
-      
+
       const tid = toast.loading('Waiting for MetaMask signature to approve...');
       try {
+        let decimals = decimalsQuery.data ?? 6;
+        try {
+          decimals = Number(await getERC20Read(poolTokenAddress).decimals());
+        } catch {
+          /* keep cached/default */
+        }
+        const amountWei = parseUnits(amount || '0', decimals) + parseUnits(fee || '0', decimals);
+
         const token = await getERC20(poolTokenAddress);
-        console.log('amountHuman', amountHuman, poolTokenAddress, fundManagerAddress);
-        const amountWei = parseUnits(amountHuman, 6); // Assuming USDC 6 decimals
-        console.log('amountHuman', amountHuman, poolTokenAddress, fundManagerAddress);
-        console.log('amountWei', amountWei);
-        console.log('fundManagerAddress', fundManagerAddress);
-        console.log('token', token);
         const tx = await token.approve(fundManagerAddress, amountWei);
         toast.loading('Approving tokens...', { id: tid });
         
@@ -68,18 +84,21 @@ export function useBorrowerWeb3Actions({ poolTokenAddress, fundManagerAddress, p
   // 3. Repay Function (Calls 'pay' on AssetManager)
   const repay = useMutation({
     mutationFn: async ({ v1PoolId, amount, fee }: { v1PoolId: string; amount: string; fee: string }) => {
-      console.log('v1PoolId', v1PoolId);
-      console.log('amount', amount);
-      console.log('fee', fee);
       if (!isConnected || !wagmiAddress) throw new Error('Wallet not connected');
       if (!fundManagerAddress) throw new Error('Asset Manager address missing');
 
       const tid = toast.loading('Waiting for MetaMask signature to confirm repayment...');
       try {
         const assetManager = await getAssetManager(fundManagerAddress);
-        
-        const amountWei = parseUnits(amount, 6);
-        const feeWei = parseUnits(fee || '0', 6);
+
+        let decimals = decimalsQuery.data ?? 6;
+        try {
+          decimals = Number(await getERC20Read(poolTokenAddress).decimals());
+        } catch {
+          /* keep cached/default */
+        }
+        const amountWei = parseUnits(amount, decimals);
+        const feeWei = parseUnits(fee || '0', decimals);
 
         // payload: pay(string _v1PoolId, uint256 _amount, uint256 _fee)
         const tx = await assetManager.pay(v1PoolId, amountWei, feeWei);
@@ -120,5 +139,6 @@ export function useBorrowerWeb3Actions({ poolTokenAddress, fundManagerAddress, p
     allowanceQuery,
     approve,
     repay,
+    tokenDecimals: decimalsQuery.data ?? 6,
   };
 }

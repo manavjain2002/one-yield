@@ -67,7 +67,7 @@ export function RepayModal({
   const isAuthorized = !!matchedBorrowerPool;
   const v1PoolId = matchedBorrowerPool ? matchedBorrowerPool.v1PoolId : '';
 
-  const { allowanceQuery, approve, repay } = useBorrowerWeb3Actions({
+  const { allowanceQuery, approve, repay, tokenDecimals } = useBorrowerWeb3Actions({
     poolTokenAddress,
     fundManagerAddress,
     poolId
@@ -75,10 +75,10 @@ export function RepayModal({
 
   const totalHuman = (parseFloat(amount) || 0) + (parseFloat(fee) || 0);
 
-  // Convert to BigInt for allowance comparison
+  // Match on-chain units exactly (avoid parseFloat → toString() float noise breaking parseUnits)
   let totalWei = 0n;
   try {
-    totalWei = parseUnits(totalHuman.toString() || '0', 6);
+    totalWei = parseUnits(amount || '0', tokenDecimals) + parseUnits(fee || '0', tokenDecimals);
   } catch {
     // ignore parse errors while typing
   }
@@ -107,7 +107,7 @@ export function RepayModal({
 
     if (needsApproval) {
       try {
-        await approve.mutateAsync(totalHuman.toString());
+        await approve.mutateAsync({ amount, fee });
       } catch {
         // Error handled in hook
       }
