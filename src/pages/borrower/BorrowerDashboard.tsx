@@ -91,6 +91,7 @@ export default function BorrowerDashboard() {
     (s, p) => s + outstandingPrincipalNominalFromBorrowerPoolRows(p.borrowerPools),
     0,
   );
+  console.log('totalPrincipal', totalPrincipal);
   const totalCoupon = poolsForDebtMetrics.reduce(
     (s, p) =>
       s +
@@ -100,8 +101,9 @@ export default function BorrowerDashboard() {
       ),
     0,
   );
+  console.log('totalCoupon', totalCoupon);
   const totalOutstanding = totalPrincipal + totalCoupon;
-
+  console.log('totalOutstanding', totalOutstanding);
   const { data: aumMap = {} } = useQuery({
     queryKey: ['borrower-pool-aum', pools.map(p => p.contractAddress).join(',')],
     queryFn: async () => {

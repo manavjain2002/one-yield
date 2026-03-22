@@ -28,7 +28,9 @@ export function outstandingPrincipalNominalFromBorrowerPoolRows(
   const list = rows ?? [];
   if (list.length === 0) return 0;
   const deployed = sumWei(list, 'fundsDeployed');
+  console.log('deployed', deployed);
   const repaid = sumWei(list, 'fundsRepaid');
+  console.log('repaid', repaid);
   const out = deployed - repaid;
   if (out <= 0n) return 0;
   return Number(out) / 1e6;

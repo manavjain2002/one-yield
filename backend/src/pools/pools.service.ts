@@ -493,6 +493,7 @@ export class PoolsService {
     }
 
     const enrichedPools = await Promise.all(pools.map((p) => this.enrichPool(p)));
+    console.log('enrichedPools', enrichedPools);
 
     // Also fetch drafts by identifier
     const whereConditions: any[] = [];
