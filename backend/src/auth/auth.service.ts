@@ -122,22 +122,25 @@ export class AuthService implements OnModuleInit {
     };
   }
 
-  async setRole(walletRef: string, role: UserEntity['role']) {
-    const w = walletRef.trim().toLowerCase();
+  async setRole(userId: string, role: UserEntity['role']) {
     const user = await this.users.findOne({
-      where: { walletAddress: w },
+      where: { id: userId },
     });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException(`User with ID ${userId} not found`);
     }
+
     user.role = role;
     await this.users.save(user);
 
     const accessToken = await this.jwt.signAsync({
       sub: user.id,
       walletAddress: user.walletAddress,
+      username: user.username,
       role: user.role,
     });
+
+
 
     return {
       accessToken,

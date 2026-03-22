@@ -70,10 +70,10 @@ export class AuthController {
   }
 
   @Post('role')
-  @UseGuards(JwtAuthGuard)
   setRole(@CurrentUser() user: JwtUser, @Body() dto: SetRoleDto) {
-    return this.auth.setRole(user.walletAddress, dto.role);
+    return this.auth.setRole(user.userId, dto.role);
   }
+
 
   @Post('login')
   login(@Body() dto: LoginDto) {

@@ -22,6 +22,7 @@ export type ApiPool = {
   totalRepaid?: string;
   lpTokenAddress?: string;
   lpTokenName?: string;
+  draftId?: string;
   borrowerPools?: Array<{
     v1PoolId: string;
     allocationBps: number;
@@ -40,10 +41,12 @@ function num(s: string | undefined): number {
 /** Map backend pool to UI `Pool` shape (amounts in same nominal units as mock for display). */
 export function mapApiPoolToUi(p: ApiPool): Pool {
   const requested = num(p.poolSize) / 1e6;
-  const received = num(p.totalDeposited) / 1e6;
+  const received = num(p.totalDeployed) / 1e6;
+  const deposited = num(p.totalDeposited) / 1e6;
   const withdrawn = num(p.totalWithdrawn) / 1e6;
   const deployed = num(p.totalDeployed) / 1e6;
   const repaid = num(p.totalRepaid) / 1e6;
+
   
   const borrowerPools = p.borrowerPools ?? [];
   const allocations = borrowerPools.map((b) => ({
@@ -91,6 +94,7 @@ export function mapApiPoolToUi(p: ApiPool): Pool {
     poolTokenName: 'USDC',
     lpTokenAddress: p.lpTokenAddress || '',
     lpTokenName: p.lpTokenName || `${p.symbol} LP`,
+    draftId: p.draftId || '',
     allocations,
     borrowerPools: borrowerPools.map((b) => ({
       v1PoolId: b.v1PoolId,

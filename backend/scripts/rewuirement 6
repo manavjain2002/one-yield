@@ -1,3 +1,5 @@
+import { ChartArea } from "lucide-react"
+
 ⚠️ Low HBAR balance.You may not have enough to cover transaction fees.
  Dont display this until the web3 wallet is not connected for borrower and admin.
 
@@ -26,4 +28,16 @@ Here in the borrower wallets, you are fetching the data based on token address, 
 the activate button in pool manager dashboard should be disabled until the admin has created the pool for it, so maintain that thing too, also the contract address stored in draft pool is not CornerLeftUpIcon, make it empty until it is deployed, and then add the value of it in the db.
 
 
-If the pool is paused, do not enable the pause button for admin, for this, you can read the variable of paused, 
+If the pool is paused, do not enable the pause button for admin, for this, you can read the variable of paused from the pool contract, and if the pool is unpaused, disbale the unpause button and enable the paused button, if the pool is closed already, then close should be disabled.
+
+For creating the pool, the FE is calling two Functions that are not needed, so only createPool function should be called, remove approve part.
+
+Fix the UI of the pool manager dashboard, the deploy funds button should be at the bottom of the Divide, with some info text above it, and the secons section with sweep and refill, for them, they should be side by side, in the same div and button at the bottom of the div.with text on it, if there is a space.
+
+    Also, for fund distribution ChartArea, use pie chart, but make usure that the height of that div must be equal to the height of the child allocation div
+
+
+    For /admin/pool-drafts/ Route, the ui is not good, instead you can do this thing that show the preview of the file on the right hand side with a download button, and the details of the pool on the left hand side. Then create a pool button.
+
+
+    

@@ -5,6 +5,7 @@ import { useAdminPoolActions } from '@/hooks/useAdminPoolActions';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
+import { AddressLink } from '@/components/AddressLink';
 
 export default function AdminDraftDetailPage() {
   const { draftId } = useParams<{ draftId: string }>();
@@ -59,67 +60,98 @@ export default function AdminDraftDetailPage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 max-w-2xl">
-        <div>
-          <Button variant="ghost" size="sm" asChild className="mb-4 -ml-2">
-            <Link to="/admin/pool-drafts">← Drafts</Link>
-          </Button>
-          <h1 className="text-2xl font-bold">{draft.name}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{draft.symbol}</p>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <Button variant="ghost" size="sm" asChild className="mb-2 -ml-2">
+              <Link to="/admin/pool-drafts">← All Drafts</Link>
+            </Button>
+            <h1 className="text-2xl font-bold">{draft.name} <span className="text-muted-foreground font-normal">({draft.symbol})</span></h1>
+          </div>
         </div>
 
-        <dl className="glass-card rounded-2xl border border-border/50 divide-y divide-border/10 text-sm">
-          <div className="px-4 py-3 flex justify-between gap-4">
-            <dt className="text-muted-foreground">Borrower</dt>
-            <dd className="font-mono text-xs break-all">{draft.borrowerIdentifier}</dd>
-          </div>
-          <div className="px-4 py-3 flex justify-between gap-4">
-            <dt className="text-muted-foreground">APY (bps)</dt>
-            <dd>{draft.apyBasisPoints}</dd>
-          </div>
-          <div className="px-4 py-3 flex justify-between gap-4">
-            <dt className="text-muted-foreground">Pool size (raw)</dt>
-            <dd className="font-mono text-xs break-all">{draft.poolSize}</dd>
-          </div>
-          <div className="px-4 py-3 flex justify-between gap-4">
-            <dt className="text-muted-foreground">Pool token</dt>
-            <dd className="font-mono text-xs break-all">{draft.poolTokenAddress}</dd>
-          </div>
-          <div className="px-4 py-3 flex justify-between gap-4">
-            <dt className="text-muted-foreground">Pool manager</dt>
-            <dd className="font-mono text-xs break-all">{draft.poolManagerAddress}</dd>
-          </div>
-          <div className="px-4 py-3 flex justify-between gap-4">
-            <dt className="text-muted-foreground">Oracle manager</dt>
-            <dd className="font-mono text-xs break-all">{draft.oracleManagerAddress}</dd>
-          </div>
-          <div className="px-4 py-3 flex justify-between gap-4">
-            <dt className="text-muted-foreground">Fee collector</dt>
-            <dd className="font-mono text-xs break-all">{draft.feeCollectorAddress}</dd>
-          </div>
-        </dl>
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+          {/* Left Column: Details & Actions */}
+          <div className="lg:col-span-2 space-y-6">
+            <div className="glass-card rounded-2xl border border-border/50 overflow-hidden divide-y divide-border/10">
+              <div className="px-5 py-4 bg-secondary/10">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Pool Specifications</h3>
+              </div>
+              <div className="px-5 py-3 flex flex-col gap-1">
+                <dt className="text-[10px] font-bold uppercase text-muted-foreground">Borrower Identifier</dt>
+                <dd className="font-mono text-xs break-all">{draft.borrowerIdentifier}</dd>
+              </div>
+              <div className="px-5 py-3 flex flex-col gap-1">
+                <dt className="text-[10px] font-bold uppercase text-muted-foreground">APY / Interest Rate</dt>
+                <dd className="text-sm font-bold text-success">{draft.apyBasisPoints / 100}% ({draft.apyBasisPoints} bps)</dd>
+              </div>
+              <div className="px-5 py-3 flex flex-col gap-1">
+                <dt className="text-[10px] font-bold uppercase text-muted-foreground">Target Size</dt>
+                <dd className="text-sm font-bold font-mono">${(Number(draft.poolSize) / 1e6).toLocaleString()}</dd>
+              </div>
+              <div className="px-5 py-3 flex flex-col gap-1">
+                <dt className="text-[10px] font-bold uppercase text-muted-foreground">Pool Token Address</dt>
+                <AddressLink address={draft.poolTokenAddress} />
+              </div>
+              <div className="px-5 py-3 flex flex-col gap-1">
+                <dt className="text-[10px] font-bold uppercase text-muted-foreground">Pool Manager</dt>
+                <AddressLink address={draft.poolManagerAddress} />
+              </div>
+              <div className="px-5 py-3 flex flex-col gap-1">
+                <dt className="text-[10px] font-bold uppercase text-muted-foreground">Fee Collector</dt>
+                <AddressLink address={draft.feeCollectorAddress} />
+              </div>
+            </div>
 
-        {draft.hasDocument && (
-          <div className="flex gap-3">
-            <Button type="button" variant="outline" onClick={() => void downloadFile()}>
-              Download {draft.documentOriginalName ?? 'file'}
-            </Button>
+            <div className="rounded-2xl border border-primary/30 bg-primary/5 p-6 space-y-4 shadow-sm">
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-primary">On-Chain Deployment</h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Review the specifications and supporting documents before creating. 
+                  This action will deploy the contract via the Pool Factory.
+                </p>
+              </div>
+              
+              <Button
+                className="w-full gradient-primary font-bold h-12 rounded-xl shadow-lg glow-primary"
+                disabled={createPoolFromDraft.isPending}
+                onClick={() => createPoolFromDraft.mutate(draft)}
+              >
+                {createPoolFromDraft.isPending ? (
+                  <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Deploying...</span>
+                ) : 'Create Pool'}
+              </Button>
+            </div>
           </div>
-        )}
 
-        <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 space-y-3">
-          <p className="text-sm font-medium">Create pool on-chain</p>
-          <p className="text-xs text-muted-foreground">
-            Connect the admin wallet that is allowed to call the pool factory, then confirm the transaction.
-            After mining, the app indexes the pool from the receipt.
-          </p>
-          <Button
-            className="gradient-primary font-semibold"
-            disabled={createPoolFromDraft.isPending}
-            onClick={() => createPoolFromDraft.mutate(draft)}
-          >
-            {createPoolFromDraft.isPending ? 'Working…' : 'Approve & create pool'}
-          </Button>
+          {/* Right Column: Preview */}
+          <div className="lg:col-span-3 space-y-4">
+            <div className="flex items-center justify-between px-2">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Compliance Document</h3>
+              {draft.hasDocument && (
+                <Button variant="outline" size="sm" onClick={() => void downloadFile()} className="h-8 text-xs gap-2">
+                  Download Original
+                </Button>
+              )}
+            </div>
+
+            <div className="glass-card rounded-2xl border border-border/50 overflow-hidden bg-secondary/5 min-h-[600px] flex flex-col items-center justify-center relative">
+              {draft.hasDocument ? (
+                <iframe
+                  src={`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/admin/pool-drafts/${draftId}/file#toolbar=0`}
+                  className="w-full h-full absolute inset-0 border-none"
+                  title="Document Preview"
+                />
+              ) : (
+                <div className="text-center p-8 space-y-2">
+                  <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Loader2 className="h-8 w-8 text-muted-foreground/40" />
+                  </div>
+                  <p className="text-sm font-medium text-muted-foreground">No document provided for this draft</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </DashboardLayout>

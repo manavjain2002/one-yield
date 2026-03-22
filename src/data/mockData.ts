@@ -31,7 +31,9 @@ export interface Pool {
   poolTokenName?: string;
   lpTokenAddress?: string;
   lpTokenName?: string;
+  draftId?: string;
   allocations: { wallet: string; percentage: number; fundsAssigned: number }[];
+
   borrowerPools?: { v1PoolId: string; dedicatedWalletAddress: string }[];
 }
 

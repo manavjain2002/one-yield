@@ -424,21 +424,21 @@ export class ManagerRoutesController {
 
   @Get('aum')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('manager')
+  @Roles('manager', 'admin')
   aum() {
     return this.poolsService.managerSummary();
   }
 
   @Get('pools')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('manager')
+  @Roles('manager', 'admin')
   listManagedPools() {
     return this.poolsService.managerSummary();
   }
 
   @Get('transactions')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('manager')
+  @Roles('manager', 'admin')
   transactions(
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,

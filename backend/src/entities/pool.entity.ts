@@ -63,6 +63,9 @@ export class PoolEntity {
   @Column({ nullable: true })
   oracleManagerAddress: string | null;
 
+  @Column({ nullable: true, type: 'uuid' })
+  draftId: string | null;
+
 
   @VersionColumn()
   version: number;

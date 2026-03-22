@@ -718,6 +718,7 @@ export class PoolsService {
           fundManagerAddress: fmAddr,
           name: draft.name,
           symbol: draft.symbol,
+          draftId: draft.id,
           status: 'pending',
           poolTokenAddress: draft.poolTokenAddress,
           lpTokenAddress: poolAddr,

@@ -18,6 +18,7 @@ import ManagerPools from "./pages/manager/ManagerPools";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminPoolDraftsPage from "./pages/admin/AdminPoolDraftsPage";
 import AdminDraftDetailPage from "./pages/admin/AdminDraftDetailPage";
+import AdminPoolDetailPage from "./pages/admin/AdminPoolDetailPage";
 import HistoryPage from "./pages/History";
 import NotFound from "./pages/NotFound";
 
@@ -107,6 +108,7 @@ function AppRoutes() {
       <Route path="/manager/pools" element={<ProtectedRoute allowedRole="manager"><ManagerPools /></ProtectedRoute>} />
 
       <Route path="/admin" element={<ProtectedRoute allowedRole="admin"><AdminDashboard /></ProtectedRoute>} />
+      <Route path="/admin/pools/:id" element={<ProtectedRoute allowedRole="admin"><AdminPoolDetailPage /></ProtectedRoute>} />
       <Route path="/admin/pool-drafts" element={<ProtectedRoute allowedRole="admin"><AdminPoolDraftsPage /></ProtectedRoute>} />
       <Route path="/admin/pool-drafts/:draftId" element={<ProtectedRoute allowedRole="admin"><AdminDraftDetailPage /></ProtectedRoute>} />
       

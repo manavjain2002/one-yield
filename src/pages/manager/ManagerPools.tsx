@@ -10,8 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { HashScanLink } from '@/components/HashScanLink';
 import { AddressLink } from '@/components/AddressLink';
 import { SearchableSelect } from '@/components/ui/searchable-select';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import { getLendingPoolRead, getAssetManagerRead, getERC20Read } from '@/lib/contracts';
 import { useSearchParams } from 'react-router-dom';
 import { ChildPoolsManager } from './ChildPoolsManager';
@@ -154,23 +155,38 @@ export default function ManagerPools() {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
-          <div className="glass-card rounded-2xl p-6 space-y-4">
-            <h3 className="text-base font-semibold">Fund Distribution</h3>
-            <div className="space-y-3">
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>In Pool (Liquid): {poolFundsNum.toLocaleString()} {poolTokenName}</span>
-                <span>With Fund Manager: {aumNum.toLocaleString()} {poolTokenName}</span>
-              </div>
-              <div className="h-4 w-full rounded-full bg-secondary/40 overflow-hidden flex">
-                <div className="h-full bg-primary transition-all" style={{ width: `${liquidPct}%` }} />
-                <div className="h-full bg-success transition-all" style={{ width: `${100 - liquidPct}%` }} />
-              </div>
-              <div className="flex gap-4 text-xs">
-                <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-primary" /><span className="text-muted-foreground">Liquid</span></div>
-                <div className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-success" /><span className="text-muted-foreground">Fund Manager</span></div>
-              </div>
+          <div className="glass-card rounded-2xl p-6 flex flex-col border border-border/50">
+            <h3 className="text-base font-semibold mb-4 text-center sm:text-left">Fund Distribution</h3>
+            <div className="flex-1 min-h-[220px] flex items-center justify-center">
+              {totalFunds > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: 'Liquid', value: poolFundsNum },
+                        { name: 'Fund Manager', value: aumNum },
+                      ]}
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      <Cell fill="hsl(var(--primary))" />
+                      <Cell fill="hsl(var(--success))" />
+                    </Pie>
+                    <RechartsTooltip 
+                      contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '12px', border: '1px solid hsl(var(--border))' }}
+                      itemStyle={{ color: 'hsl(var(--foreground))' }}
+                      formatter={(val: number) => `$${val.toLocaleString()}`}
+                    />
+                    <Legend verticalAlign="bottom" height={36}/>
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="text-muted-foreground italic text-sm text-center py-20">No funds in pool</div>
+              )}
             </div>
-            <div className="space-y-2 text-sm pt-2 border-t border-border/30">
+            <div className="space-y-3 text-sm pt-4 border-t border-border/30 mt-auto">
               <div className="flex justify-between"><span className="text-muted-foreground">Target Pool Size</span><span className="font-semibold">${selectedPool.totalRequested.toLocaleString()}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Total Deposited</span><span className="font-semibold">${selectedPool.totalReceived.toLocaleString()}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Pool APY</span><span className="font-semibold text-success">{selectedPool.apy}%</span></div>
@@ -188,124 +204,142 @@ export default function ManagerPools() {
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
-            <div className="p-4 rounded-xl border border-primary/30 bg-primary/5 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-widest text-primary">Deploy Funds</p>
-                <span className="text-[10px] font-mono text-muted-foreground">Release to Borrowers</span>
-              </div>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="block">
+            <div className="lg:col-span-2 space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="p-4 rounded-xl border border-border bg-secondary/20 space-y-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Transfer to Reserve (Sweep) — {poolTokenName}</p>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Input
+                        type="number"
+                        placeholder={`Amount (${poolTokenName})`}
+                        value={sweepAmount}
+                        onChange={e => setSweepAmount(e.target.value)}
+                        className="h-9 text-sm bg-secondary/30 pr-14"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setSweepAmount(String(poolFundsNum))}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-primary font-bold hover:underline"
+                      >
+                        Max
+                      </button>
+                    </div>
                     <Button
-                      className="w-full gradient-primary shadow-lg glow-primary font-bold h-10 rounded-xl"
-                      disabled={aumNum === 0 || actions.releaseToBorrowers.isPending || isPoolPending || isPoolClosed || !isAllocationComplete}
-                      onClick={() => { startTransaction('Deploying funds...'); actions.releaseToBorrowers.mutateAsync(selectedPool).then(() => { void refetchBalances(); }).finally(endTransaction); }}
+                      variant="outline"
+                      className="rounded-xl text-[10px] h-9 font-bold px-4"
+                      disabled={!sweepAmount || Number(sweepAmount) <= 0 || isPoolPending || isPoolClosed}
+                      onClick={async () => {
+                        const amt = parseFloat(sweepAmount);
+                        if (isNaN(amt) || amt <= 0) return;
+                        startTransaction('Sweeping funds...');
+                        try {
+                          await actions.sweepToFundManager.mutateAsync({ pool: selectedPool, amount: BigInt(Math.floor(amt * 1e6)) });
+                          setSweepAmount('');
+                          void refetchBalances();
+                        } finally { endTransaction(); }
+                      }}
                     >
-                      {actions.releaseToBorrowers.isPending ? 'Deploying...' : `Deploy ${aumNum.toLocaleString()} ${poolTokenName}`}
+                      Sweep
                     </Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {!isAllocationComplete ? 'Allocation must total 100% before deploying' : aumNum === 0 ? 'No funds available to deploy' : 'Release funds to borrower wallets'}
-                </TooltipContent>
-              </Tooltip>
-            </div>
-
-            <div className="space-y-4">
-              <div className="p-4 rounded-xl border border-border bg-secondary/20 space-y-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Transfer to Reserve (Sweep) — {poolTokenName}</p>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Input
-                      type="number"
-                      placeholder={`Amount (${poolTokenName})`}
-                      value={sweepAmount}
-                      onChange={e => setSweepAmount(e.target.value)}
-                      className="h-9 text-sm bg-secondary/30 pr-14"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setSweepAmount(String(poolFundsNum))}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-primary font-bold hover:underline"
-                    >
-                      Max
-                    </button>
                   </div>
-                  <Button
-                    variant="outline"
-                    className="rounded-xl text-[10px] h-9 font-bold px-4"
-                    disabled={!sweepAmount || Number(sweepAmount) <= 0 || isPoolPending || isPoolClosed}
-                    onClick={async () => {
-                      const amt = parseFloat(sweepAmount);
-                      if (isNaN(amt) || amt <= 0) return;
-                      startTransaction('Sweeping funds...');
-                      try {
-                        await actions.sweepToFundManager.mutateAsync({ pool: selectedPool, amount: BigInt(Math.floor(amt * 1e6)) });
-                        setSweepAmount('');
-                        void refetchBalances();
-                      } finally { endTransaction(); }
-                    }}
-                  >
-                    Sweep
-                  </Button>
+                </div>
+                <div className="p-4 rounded-xl border border-border bg-secondary/20 space-y-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Transfer to Available (Refill) — {poolTokenName}</p>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Input
+                        type="number"
+                        placeholder={`Amount (${poolTokenName})`}
+                        value={refillAmount}
+                        onChange={e => setRefillAmount(e.target.value)}
+                        className="h-9 text-sm bg-secondary/30 pr-14"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setRefillAmount(String(aumNum))}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-primary font-bold hover:underline"
+                      >
+                        Max
+                      </button>
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="rounded-xl text-[10px] h-9 font-bold px-4"
+                      disabled={!refillAmount || Number(refillAmount) <= 0 || isPoolPending || isPoolClosed}
+                      onClick={async () => {
+                        const amt = parseFloat(refillAmount);
+                        if (isNaN(amt) || amt <= 0) return;
+                        startTransaction('Refilling pool...');
+                        try {
+                          await actions.refillPool.mutateAsync({ pool: selectedPool, amount: BigInt(Math.floor(amt * 1e6)) });
+                          setRefillAmount('');
+                          void refetchBalances();
+                        } finally { endTransaction(); }
+                      }}
+                    >
+                      Refill
+                    </Button>
+                  </div>
                 </div>
               </div>
-              <div className="p-4 rounded-xl border border-border bg-secondary/20 space-y-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Transfer to Available (Refill) — {poolTokenName}</p>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Input
-                      type="number"
-                      placeholder={`Amount (${poolTokenName})`}
-                      value={refillAmount}
-                      onChange={e => setRefillAmount(e.target.value)}
-                      className="h-9 text-sm bg-secondary/30 pr-14"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setRefillAmount(String(aumNum))}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-primary font-bold hover:underline"
-                    >
-                      Max
-                    </button>
+
+              <div className="p-5 rounded-2xl border border-primary/30 bg-primary/5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-widest text-primary">Deploy Funds</p>
+                    <p className="text-xs text-muted-foreground mt-1">Release funds from manager reserve to borrower sub-pools.</p>
                   </div>
-                  <Button
-                    variant="outline"
-                    className="rounded-xl text-[10px] h-9 font-bold px-4"
-                    disabled={!refillAmount || Number(refillAmount) <= 0 || isPoolPending || isPoolClosed}
-                    onClick={async () => {
-                      const amt = parseFloat(refillAmount);
-                      if (isNaN(amt) || amt <= 0) return;
-                      startTransaction('Refilling pool...');
-                      try {
-                        await actions.refillPool.mutateAsync({ pool: selectedPool, amount: BigInt(Math.floor(amt * 1e6)) });
-                        setRefillAmount('');
-                        void refetchBalances();
-                      } finally { endTransaction(); }
-                    }}
-                  >
-                    Refill
-                  </Button>
+                  <span className="text-[10px] font-mono text-muted-foreground">ON-CHAIN ACTION</span>
                 </div>
+                
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="block">
+                      <Button
+                        className="w-full gradient-primary shadow-lg glow-primary font-bold h-12 rounded-xl"
+                        disabled={aumNum === 0 || actions.releaseToBorrowers.isPending || isPoolPending || isPoolClosed || !isAllocationComplete}
+                        onClick={() => { startTransaction('Deploying funds...'); actions.releaseToBorrowers.mutateAsync(selectedPool).then(() => { void refetchBalances(); }).finally(endTransaction); }}
+                      >
+                        {actions.releaseToBorrowers.isPending ? 'Deploying...' : `Deploy ${aumNum.toLocaleString()} ${poolTokenName}`}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {!isAllocationComplete ? 'Allocation must total 100% before deploying' : aumNum === 0 ? 'No funds available to deploy' : 'Release funds to borrower wallets'}
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
           </div>
 
           {isPoolPending && (
-            <div className="pt-2 border-t border-border/50">
+            <div className="pt-6 border-t border-border/50">
               <div className="flex items-center justify-between mb-4">
-                <span className="text-sm font-bold">Activation</span>
+                <div>
+                  <span className="text-sm font-bold">Pool Initialization</span>
+                  <p className="text-xs text-muted-foreground">Activate the pool to enable lending and borrowing.</p>
+                </div>
               </div>
-              <Button
-                className="w-full gradient-primary shadow-lg glow-primary font-bold h-11 rounded-xl"
-                disabled={actions.activatePool.isPending}
-                onClick={() => {
-                  startTransaction('Activating pool...');
-                  actions.activatePool.mutateAsync(selectedPool).finally(endTransaction);
-                }}
-              >
-                {actions.activatePool.isPending ? 'Activating...' : 'Activate & Initialize Pool'}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="block">
+                    <Button
+                      className="w-full gradient-primary shadow-lg glow-primary font-bold h-11 rounded-xl"
+                      disabled={actions.activatePool.isPending || !selectedPool.contractAddress}
+                      onClick={() => {
+                        startTransaction('Activating pool...');
+                        actions.activatePool.mutateAsync(selectedPool).finally(endTransaction);
+                      }}
+                    >
+                      {actions.activatePool.isPending ? 'Activating...' : 'Activate & Initialize Pool'}
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {!selectedPool.contractAddress ? 'Waiting for on-chain deployment' : 'Set pool to active status'}
+                </TooltipContent>
+              </Tooltip>
             </div>
           )}
         </div>

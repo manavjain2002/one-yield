@@ -6,6 +6,77 @@ import { Link } from 'react-router-dom';
 import { useAdminPoolDrafts } from '@/hooks/useAdminPoolDrafts';
 import { StatusBadge } from '@/components/StatusBadge';
 import { AddressLink } from '@/components/AddressLink';
+import { useQuery } from '@tanstack/react-query';
+import { getLendingPoolRead } from '@/lib/contracts';
+import { Loader2 } from 'lucide-react';
+import type { Pool } from '@/data/mockData';
+
+function PoolRow({ p, actions }: { p: Pool; actions: any }) {
+  const { data: isPaused, isLoading: pausedLoading } = useQuery({
+    queryKey: ['pool-paused', p.contractAddress],
+    queryFn: async () => {
+      if (!p.contractAddress) return false;
+      return await getLendingPoolRead(p.contractAddress).paused();
+    },
+    enabled: !!p.contractAddress,
+  });
+
+  const isClosed = p.status === 'closed';
+
+  return (
+    <tr key={p.id} className="hover:bg-secondary/5">
+      <td className="px-4 py-3 font-medium">
+        <Link to={`/admin/pools/${p.id}`} className="hover:text-primary transition-colors">
+          {p.name}{' '}
+          <span className="text-muted-foreground font-normal">({p.symbol})</span>
+        </Link>
+      </td>
+
+      <td className="px-4 py-3 hidden sm:table-cell">
+        <AddressLink address={p.contractAddress} />
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <StatusBadge status={isPaused ? 'paused' : p.status} />
+          {pausedLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+        </div>
+      </td>
+      <td className="px-4 py-3 text-right space-x-1 whitespace-nowrap">
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-[10px] h-8"
+          disabled={actions.pauseTarget.isPending || isClosed || isPaused === true || pausedLoading}
+          onClick={() => actions.pauseTarget.mutate(p)}
+        >
+          Pause
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-[10px] h-8"
+          disabled={actions.unpauseTarget.isPending || isClosed || isPaused === false || pausedLoading}
+          onClick={() => actions.unpauseTarget.mutate(p)}
+        >
+          Unpause
+        </Button>
+        <Button
+          size="sm"
+          variant="destructive"
+          className="text-[10px] h-8"
+          disabled={actions.closePoolFactory.isPending || isClosed}
+          onClick={() => {
+            if (window.confirm('Close this pool via factory? This cannot be undone.')) {
+              actions.closePoolFactory.mutate(p);
+            }
+          }}
+        >
+          Close
+        </Button>
+      </td>
+    </tr>
+  );
+}
 
 export default function AdminDashboard() {
   const { data: pools = [], isLoading: poolsLoading } = useAdminPools();
@@ -72,51 +143,7 @@ export default function AdminDashboard() {
                   </tr>
                 ) : (
                   pools.map((p) => (
-                    <tr key={p.id} className="hover:bg-secondary/5">
-                      <td className="px-4 py-3 font-medium">
-                        {p.name}{' '}
-                        <span className="text-muted-foreground font-normal">({p.symbol})</span>
-                      </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        <AddressLink address={p.contractAddress} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={p.status} />
-                      </td>
-                      <td className="px-4 py-3 text-right space-x-1 whitespace-nowrap">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-[10px] h-8"
-                          disabled={actions.pauseTarget.isPending || p.status === 'closed'}
-                          onClick={() => actions.pauseTarget.mutate(p)}
-                        >
-                          Pause
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-[10px] h-8"
-                          disabled={actions.unpauseTarget.isPending || p.status === 'closed'}
-                          onClick={() => actions.unpauseTarget.mutate(p)}
-                        >
-                          Unpause
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          className="text-[10px] h-8"
-                          disabled={actions.closePoolFactory.isPending || p.status === 'closed'}
-                          onClick={() => {
-                            if (window.confirm('Close this pool via factory? This cannot be undone.')) {
-                              actions.closePoolFactory.mutate(p);
-                            }
-                          }}
-                        >
-                          Close
-                        </Button>
-                      </td>
-                    </tr>
+                    <PoolRow key={p.id} p={p} actions={actions} />
                   ))
                 )}
               </tbody>
