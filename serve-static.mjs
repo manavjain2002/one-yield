@@ -10,6 +10,23 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.join(__dirname, 'dist');
 const PORT = parseInt(process.env.PORT || '8080', 10);
 
+function assertDistReady() {
+  const indexPath = path.join(dist, 'index.html');
+  if (!fs.existsSync(dist)) {
+    console.error(`[static] FATAL: dist directory missing: ${dist}`);
+    console.error('[static] Fix: ensure Dockerfile.serve copies /app/dist from the Vite build stage.');
+    process.exit(1);
+  }
+  if (!fs.existsSync(indexPath)) {
+    console.error(`[static] FATAL: dist/index.html missing: ${indexPath}`);
+    console.error('[static] Fix: npm run build must succeed in the Docker builder stage.');
+    process.exit(1);
+  }
+}
+
+assertDistReady();
+console.log(`[static] boot: PORT=${PORT} dist=${dist}`);
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
@@ -43,6 +60,13 @@ const server = http.createServer((req, res) => {
   }
 
   let urlPath = req.url.split('?')[0];
+  if (urlPath === '/favicon.ico') {
+    const icoPath = path.join(dist, 'favicon.ico');
+    const svgPath = path.join(dist, 'favicon.svg');
+    if (!fs.existsSync(icoPath) && fs.existsSync(svgPath)) {
+      urlPath = '/favicon.svg';
+    }
+  }
   if (urlPath === '/' || urlPath === '') {
     urlPath = '/index.html';
   }
