@@ -39,6 +39,7 @@ export interface Pool {
     dedicatedWalletAddress: string;
     allocationBps: number;
     fundsDeployed: string;
+    fundsRepaid: string;
   }[];
 }
 

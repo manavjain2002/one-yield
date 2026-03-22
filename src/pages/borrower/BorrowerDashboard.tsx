@@ -27,13 +27,15 @@ import { useCreatePool } from '@/hooks/useCreatePool';
 import { useWallet } from '@/contexts/WalletContext';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
+import {
+  estimatedCouponNominalFromPrincipal,
+  outstandingPrincipalNominalFromBorrowerPoolRows,
+} from '@/lib/borrower-dashboard-borrower-pools-debt';
 
 export default function BorrowerDashboard() {
   const { data: pools = [] } = useBorrowerPoolsList();
-  console.log('pools', pools);
   const { data: txData, isLoading: isLoadingTxs } = useTransactionHistory(1, 5);
   const [selectedRepayPool, setSelectedRepayPool] = useState<Pool | null>(null);
-  console.log('selectedRepayPool', selectedRepayPool);
   const [expandedPoolId, setExpandedPoolId] = useState<string | null>(null);
   const [showCreatePool, setShowCreatePool] = useState(false);
 
@@ -84,8 +86,20 @@ export default function BorrowerDashboard() {
         : 'USDC';
   const fmtTok = (n: number) => `${Math.round(n).toLocaleString()} ${summaryTokenLabel}`;
 
-  const totalPrincipal = pools.reduce((s, p) => s + Math.max(0, p.totalFunded - p.totalRepaid), 0);
-  const totalCoupon = pools.reduce((s, p) => { const pr = Math.max(0, p.totalFunded - p.totalRepaid); return s + pr * p.apy / 200; }, 0);
+  const poolsForDebtMetrics = activePools;
+  const totalPrincipal = poolsForDebtMetrics.reduce(
+    (s, p) => s + outstandingPrincipalNominalFromBorrowerPoolRows(p.borrowerPools),
+    0,
+  );
+  const totalCoupon = poolsForDebtMetrics.reduce(
+    (s, p) =>
+      s +
+      estimatedCouponNominalFromPrincipal(
+        outstandingPrincipalNominalFromBorrowerPoolRows(p.borrowerPools),
+        p.apy,
+      ),
+    0,
+  );
   const totalOutstanding = totalPrincipal + totalCoupon;
 
   const { data: aumMap = {} } = useQuery({
@@ -153,8 +167,8 @@ export default function BorrowerDashboard() {
           <div className="space-y-3">
             {pools.length > 0 ? pools.map(pool => {
               const isExpanded = expandedPoolId === pool.id;
-              const principal = Math.max(0, pool.totalFunded - pool.totalRepaid);
-              const coupon = principal * pool.apy / 200;
+              const principal = outstandingPrincipalNominalFromBorrowerPoolRows(pool.borrowerPools);
+              const coupon = estimatedCouponNominalFromPrincipal(principal, pool.apy);
               const outstanding = principal + coupon;
               const poolAum = aumMap[pool.id] ?? 0n;
               const hasAum = poolAum > 0n;

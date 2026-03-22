@@ -99,6 +99,7 @@ export function mapApiPoolToUi(p: ApiPool): Pool {
       dedicatedWalletAddress: b.dedicatedWalletAddress,
       allocationBps: b.allocationBps ?? 0,
       fundsDeployed: b.fundsDeployed ?? '0',
+      fundsRepaid: b.fundsRepaid ?? '0',
     })),
   };
 }
