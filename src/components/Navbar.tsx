@@ -36,6 +36,8 @@ export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const navItems = role ? roleNavItems[role as keyof typeof roleNavItems] ?? [] : [];
+  const sessionLogout = role === 'borrower' || role === 'admin';
+  const logoutLabel = sessionLogout ? 'Log out' : 'Disconnect';
 
   return (
     <>
@@ -92,17 +94,19 @@ export function Navbar() {
             <ThemeToggle />
             <Button
               variant="ghost"
-              size="icon"
+              size="sm"
               onClick={() => {
-                if (role === 'borrower' || role === 'admin') {
+                if (sessionLogout) {
                   logoutSession();
                 } else {
                   disconnect();
                 }
               }}
-              className="text-muted-foreground hover:text-destructive"
+              className="h-9 gap-1.5 px-2 text-muted-foreground hover:text-destructive sm:px-3"
+              aria-label={logoutLabel}
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-4 w-4 shrink-0" />
+              <span className="text-xs font-medium">{logoutLabel}</span>
             </Button>
 
             {/* Mobile Menu Toggle */}
