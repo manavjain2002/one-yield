@@ -13,3 +13,11 @@ export const POOL_TOKEN_ADDRESS =
 export const RPC_URL =
   (import.meta.env.VITE_RPC_URL as string | undefined) ??
   'https://testnet.hashio.io/api';
+
+/**
+ * EVM address funded with mock USDC for the public faucet.
+ * Set in `.env` as `VITE_FAUCET_WALLET_ADDRESS` so the faucet page can show its balance (read-only RPC).
+ */
+export const FAUCET_WALLET_ADDRESS = (
+  (import.meta.env.VITE_FAUCET_WALLET_ADDRESS as string | undefined) ?? ''
+).trim();

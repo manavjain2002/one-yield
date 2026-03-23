@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api, isApiConfigured } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,9 @@ import { Copy, Droplets, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { AxiosError } from 'axios';
+import { formatUnits } from 'ethers';
+import { getERC20Read } from '@/lib/contracts';
+import { FAUCET_WALLET_ADDRESS } from '@/lib/chain-constants';
 import logo from '@/assets/oneyield-logo.png';
 
 export type FaucetInfo = {
@@ -19,6 +22,8 @@ export type FaucetInfo = {
   claimEnabled: boolean;
   maxPerTxHuman: string;
 };
+
+const EVM_ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
 
 function parseApiError(err: unknown): string {
   if (err instanceof AxiosError) {
@@ -31,9 +36,12 @@ function parseApiError(err: unknown): string {
 }
 
 export default function FaucetPage() {
+  const queryClient = useQueryClient();
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
+
+  const faucetWalletValid = FAUCET_WALLET_ADDRESS.length > 0 && EVM_ADDR_RE.test(FAUCET_WALLET_ADDRESS);
 
   const infoQuery = useQuery({
     queryKey: ['faucet', 'info'],
@@ -45,6 +53,22 @@ export default function FaucetPage() {
     retry: 1,
   });
 
+  const tokenAddress = infoQuery.data?.tokenAddress;
+  const tokenDecimals = infoQuery.data?.decimals ?? 18;
+
+  const faucetBalanceQuery = useQuery({
+    queryKey: ['faucet', 'faucetWalletBalance', tokenAddress, FAUCET_WALLET_ADDRESS] as const,
+    queryFn: async () => {
+      const c = getERC20Read(tokenAddress!);
+      const raw = await c.balanceOf(FAUCET_WALLET_ADDRESS);
+      return BigInt(raw.toString());
+    },
+    enabled:
+      Boolean(isApiConfigured() && faucetWalletValid && tokenAddress && EVM_ADDR_RE.test(tokenAddress)),
+    retry: 1,
+    refetchInterval: 60_000,
+  });
+
   const claimMutation = useMutation({
     mutationFn: async (body: { recipient: string; amount: string }) => {
       const { data } = await api.post<{ txHash: string }>('/faucet/claim', body);
@@ -53,6 +77,7 @@ export default function FaucetPage() {
     onSuccess: (data) => {
       setLastTxHash(data.txHash);
       toast.success('Tokens sent');
+      void queryClient.invalidateQueries({ queryKey: ['faucet', 'faucetWalletBalance'] });
     },
     onError: (err) => {
       toast.error(parseApiError(err));
@@ -71,7 +96,7 @@ export default function FaucetPage() {
     setLastTxHash(null);
     const r = recipient.trim();
     const a = amount.trim();
-    if (!/^0x[a-fA-F0-9]{40}$/.test(r)) {
+    if (!EVM_ADDR_RE.test(r)) {
       toast.error('Enter a valid 0x-prefixed wallet address');
       return;
     }
@@ -162,6 +187,46 @@ export default function FaucetPage() {
                     </dd>
                   </div>
                 </dl>
+              </div>
+
+              <div className="rounded-xl border border-border/40 bg-secondary/20 px-3 py-3 space-y-2">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Faucet wallet balance
+                </h2>
+                {!FAUCET_WALLET_ADDRESS && (
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Set <code className="rounded bg-secondary/60 px-1 py-0.5 text-[10px]">VITE_FAUCET_WALLET_ADDRESS</code>{' '}
+                    in the frontend env to show how much mock {infoQuery.data.symbol} the faucet wallet holds (read via{' '}
+                    <code className="rounded bg-secondary/60 px-1 py-0.5 text-[10px]">VITE_RPC_URL</code>).
+                  </p>
+                )}
+                {FAUCET_WALLET_ADDRESS && !faucetWalletValid && (
+                  <p className="text-xs text-destructive">
+                    <code className="text-[10px]">VITE_FAUCET_WALLET_ADDRESS</code> is not a valid 0x-prefixed EVM address.
+                  </p>
+                )}
+                {faucetWalletValid && (
+                  <>
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between text-sm">
+                      <span className="text-muted-foreground font-mono text-xs break-all">{FAUCET_WALLET_ADDRESS}</span>
+                      {faucetBalanceQuery.isFetching && !faucetBalanceQuery.data ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" aria-hidden />
+                      ) : null}
+                    </div>
+                    {faucetBalanceQuery.isError && (
+                      <p className="text-xs text-destructive">
+                        Could not load balance. Check RPC and contract address.{' '}
+                        {faucetBalanceQuery.error instanceof Error ? faucetBalanceQuery.error.message : ''}
+                      </p>
+                    )}
+                    {faucetBalanceQuery.data !== undefined && !faucetBalanceQuery.isError && (
+                      <p className="text-lg font-semibold tabular-nums">
+                        {formatUnits(faucetBalanceQuery.data, tokenDecimals)}{' '}
+                        <span className="text-sm font-medium text-muted-foreground">{infoQuery.data.symbol}</span>
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
 
               {!infoQuery.data.claimEnabled && (
