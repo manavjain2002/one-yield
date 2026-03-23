@@ -107,7 +107,11 @@ export default function ManagerPools() {
     refetchInterval: 15000,
   });
 
-  const { data: isPaused } = usePoolContractPaused(selectedPool?.contractAddress);
+  const contractAddr = selectedPool?.contractAddress?.trim() ?? '';
+  const isValidPoolContract = /^0x[a-fA-F0-9]{40}$/i.test(contractAddr);
+  const pauseReadAddr =
+    selectedPool?.status === 'draft' || !isValidPoolContract ? undefined : contractAddr;
+  const { data: isPaused } = usePoolContractPaused(pauseReadAddr);
 
   const { data: totalAllocationOnChain = 0 } = useQuery({
     queryKey: ['total-allocation', selectedPool?.fundManagerAddress],
@@ -169,8 +173,13 @@ export default function ManagerPools() {
   }
 
 
+  const isPoolDraft = selectedPool.status === 'draft';
   const isPoolPending = selectedPool.status === 'pending';
   const isPoolClosed = selectedPool.status === 'closed';
+  const isPoolOpsLocked = isPoolDraft || isPoolPending || isPoolClosed;
+
+  const statusBadgePool =
+    isPoolDraft ? 'draft' : isPaused ? 'paused' : selectedPool.status;
 
   return (
     <DashboardLayout>
@@ -195,7 +204,7 @@ export default function ManagerPools() {
             <p className="text-sm font-bold truncate">{selectedPool.name}</p>
             <AddressLink address={selectedPool.contractAddress} />
             <div className="pt-1">
-              <StatusBadge status={isPaused ? 'paused' : selectedPool.status} />
+              <StatusBadge status={statusBadgePool} />
             </div>
           </div>
         </div>
@@ -239,7 +248,15 @@ export default function ManagerPools() {
             </div>
           </div>
           <div className="lg:col-span-2">
-            <ChildPoolsManager pool={selectedPool} />
+            {isPoolDraft ? (
+              <div className="glass-card rounded-2xl p-6 border border-border/50 flex items-center justify-center min-h-[220px]">
+                <p className="text-sm text-muted-foreground text-center max-w-md px-4">
+                  Child pool allocations appear after this pool is deployed on-chain. This entry is still a draft.
+                </p>
+              </div>
+            ) : (
+              <ChildPoolsManager pool={selectedPool} />
+            )}
           </div>
         </div>
 
@@ -274,7 +291,7 @@ export default function ManagerPools() {
                     <Button
                       variant="outline"
                       className="rounded-xl text-[10px] h-9 font-bold px-4"
-                      disabled={!sweepAmount || Number(sweepAmount) <= 0 || isPoolPending || isPoolClosed}
+                      disabled={!sweepAmount || Number(sweepAmount) <= 0 || isPoolOpsLocked}
                       onClick={async () => {
                         const amt = parseFloat(sweepAmount);
                         if (isNaN(amt) || amt <= 0) return;
@@ -312,7 +329,7 @@ export default function ManagerPools() {
                     <Button
                       variant="outline"
                       className="rounded-xl text-[10px] h-9 font-bold px-4"
-                      disabled={!refillAmount || Number(refillAmount) <= 0 || isPoolPending || isPoolClosed}
+                      disabled={!refillAmount || Number(refillAmount) <= 0 || isPoolOpsLocked}
                       onClick={async () => {
                         const amt = parseFloat(refillAmount);
                         if (isNaN(amt) || amt <= 0) return;
@@ -344,7 +361,7 @@ export default function ManagerPools() {
                     <span className="block">
                       <Button
                         className="w-full gradient-primary shadow-lg glow-primary font-bold h-12 rounded-xl"
-                        disabled={aumNum === 0 || actions.releaseToBorrowers.isPending || isPoolPending || isPoolClosed || !isAllocationComplete}
+                        disabled={aumNum === 0 || actions.releaseToBorrowers.isPending || isPoolOpsLocked || !isAllocationComplete}
                         onClick={() => { startTransaction('Deploying funds...'); actions.releaseToBorrowers.mutateAsync(selectedPool).then(() => { void refetchBalances(); }).finally(endTransaction); }}
                       >
                         {actions.releaseToBorrowers.isPending ? 'Deploying...' : `Deploy ${aumNum.toLocaleString()} ${poolTokenName}`}
@@ -352,7 +369,7 @@ export default function ManagerPools() {
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
-                    {!isAllocationComplete ? 'Allocation must total 100% before deploying' : aumNum === 0 ? 'No funds available to deploy' : 'Release funds to borrower wallets'}
+                    {isPoolDraft ? 'Deploy the pool on-chain first' : !isAllocationComplete ? 'Allocation must total 100% before deploying' : aumNum === 0 ? 'No funds available to deploy' : 'Release funds to borrower wallets'}
                   </TooltipContent>
                 </Tooltip>
               </div>

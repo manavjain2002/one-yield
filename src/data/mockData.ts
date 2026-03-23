@@ -22,7 +22,7 @@ export interface Pool {
   assetUnderManagement: string; // Raw BigInt string from db
   apyBasisPoints: number; // Raw integer from db
   apy: number; // Float for UI (e.g., 6.5)
-  status: 'pending' | 'active' | 'paused' | 'closed';
+  status: 'draft' | 'pending' | 'active' | 'paused' | 'closed';
   riskLevel: 'low' | 'medium' | 'high';
   acceptedTokens: string[];
   createdAt: string;

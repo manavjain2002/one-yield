@@ -3,7 +3,7 @@ import { MetricCard } from '@/components/MetricCard';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useManagerSummary } from '@/hooks/useManagerSummary';
 import { AddressLink } from '@/components/AddressLink';
-import { Landmark, Clock, BarChart3, Settings2 } from 'lucide-react';
+import { Landmark, Clock, BarChart3, Settings2, FileEdit } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { TransactionList } from '@/components/TransactionList';
 import { useTransactionHistory } from '@/hooks/useTransactionHistory';
@@ -19,6 +19,7 @@ export default function ManagerDashboard() {
   const pools = summary?.poolsUi ?? [];
   const activePools = pools.filter(p => p.status === 'active');
   const pendingPools = pools.filter(p => p.status === 'pending');
+  const draftPools = pools.filter(p => p.status === 'draft');
   const collectivePoolSize = activePools.reduce((s, p) => s + Number(p.poolSize || '0') / 1e6, 0);
 
   return (
@@ -29,9 +30,10 @@ export default function ManagerDashboard() {
           <p className="text-sm text-muted-foreground mt-1">Oversee pool operations and fund flows</p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard title="Total Active Pools" value={String(activePools.length)} icon={<BarChart3 className="h-5 w-5 text-success" />} />
-          <MetricCard title="Total Pending Pools" value={String(pendingPools.length)} icon={<Clock className="h-5 w-5 text-warning" />} />
+          <MetricCard title="Awaiting Activation" value={String(pendingPools.length)} icon={<Clock className="h-5 w-5 text-warning" />} change="On-chain, not yet activated" changeType="neutral" />
+          <MetricCard title="Drafts (pre-chain)" value={String(draftPools.length)} icon={<FileEdit className="h-5 w-5 text-primary" />} change="Not deployed yet" changeType="neutral" />
           <MetricCard title="Collective Pool Size (Active)" value={`$${collectivePoolSize.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} icon={<Landmark className="h-5 w-5" />} />
         </div>
 

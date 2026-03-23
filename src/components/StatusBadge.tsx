@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
 
 interface StatusBadgeProps {
-  status: 'active' | 'paused' | 'closed' | 'pending' | 'confirmed' | 'failed';
+  status: 'active' | 'paused' | 'closed' | 'pending' | 'draft' | 'confirmed' | 'failed';
   className?: string;
 }
 
@@ -10,6 +10,7 @@ const statusStyles = {
   confirmed: 'bg-success/15 text-success border-success/30',
   paused: 'bg-warning/15 text-warning border-warning/30',
   pending: 'bg-warning/15 text-warning border-warning/30',
+  draft: 'bg-primary/10 text-primary border-primary/25',
   closed: 'bg-muted text-muted-foreground border-border',
   failed: 'bg-destructive/15 text-destructive border-destructive/30',
 };
@@ -24,6 +25,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
       <span className={cn('h-1.5 w-1.5 rounded-full', {
         'bg-success': status === 'active' || status === 'confirmed',
         'bg-warning': status === 'paused' || status === 'pending',
+        'bg-primary': status === 'draft',
         'bg-muted-foreground': status === 'closed',
         'bg-destructive': status === 'failed',
       })} />

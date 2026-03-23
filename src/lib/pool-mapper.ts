@@ -54,6 +54,7 @@ export function mapApiPoolToUi(p: ApiPool): Pool {
   }));
 
   const statusMap: Record<string, Pool['status']> = {
+    draft: 'draft',
     pending: 'pending',
     active: 'active',
     paused: 'paused',
@@ -77,7 +78,7 @@ export function mapApiPoolToUi(p: ApiPool): Pool {
     poolSize: p.poolSize ?? '0',
     totalDeposited: p.totalDeposited ?? '0',
     assetUnderManagement: p.assetUnderManagement ?? '0',
-    status: statusMap[p.status] ?? 'active',
+    status: statusMap[(p.status || '').toLowerCase()] ?? 'pending',
     riskLevel: 'medium',
     acceptedTokens: (() => {
       const addr = p.poolTokenAddress?.trim();

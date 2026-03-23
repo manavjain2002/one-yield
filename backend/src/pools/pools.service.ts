@@ -1171,7 +1171,7 @@ export class PoolsService {
       contractAddress: draft.txHash || draft.id, // For UI txHash fallback
       name: draft.name,
       symbol: draft.symbol,
-      status: 'pending',
+      status: 'draft',
       poolTokenAddress: draft.poolTokenAddress,
       apyBasisPoints: draft.apyBasisPoints,
       poolSize: draft.poolSize,
