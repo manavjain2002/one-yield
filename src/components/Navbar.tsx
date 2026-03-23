@@ -102,7 +102,7 @@ export function Navbar() {
                   disconnect();
                 }
               }}
-              className="h-9 gap-1.5 px-2 text-muted-foreground hover:text-destructive sm:px-3"
+              className="h-9 gap-1.5 px-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:px-3"
               aria-label={logoutLabel}
             >
               <LogOut className="h-4 w-4 shrink-0" />
