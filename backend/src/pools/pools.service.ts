@@ -98,44 +98,43 @@ export class PoolsService {
     return this.enrichPool(pool);
   }
 
+  /** Trim + uppercase for stable comparisons with stored pool/draft rows. */
+  private static normalizePoolIdentityField(value: string | undefined): string {
+    return (value || '').trim().toUpperCase();
+  }
+
+  private async isPoolNameTaken(normalizedName: string): Promise<boolean> {
+    const [inPools, inDrafts] = await Promise.all([
+      this.pools.createQueryBuilder('p').where('UPPER(TRIM(p.name)) = :name', { name: normalizedName }).getExists(),
+      this.drafts.createQueryBuilder('d').where('UPPER(TRIM(d.name)) = :name', { name: normalizedName }).getExists(),
+    ]);
+    return inPools || inDrafts;
+  }
+
+  private async isPoolSymbolTaken(normalizedSymbol: string): Promise<boolean> {
+    const [inPools, inDrafts] = await Promise.all([
+      this.pools.createQueryBuilder('p').where('UPPER(TRIM(p.symbol)) = :symbol', { symbol: normalizedSymbol }).getExists(),
+      this.drafts.createQueryBuilder('d').where('UPPER(TRIM(d.symbol)) = :symbol', { symbol: normalizedSymbol }).getExists(),
+    ]);
+    return inPools || inDrafts;
+  }
+
   async checkPoolIdentityAvailability(name?: string, symbol?: string) {
-    const normalizedName = (name || '').trim().toUpperCase();
-    const normalizedSymbol = (symbol || '').trim().toUpperCase();
+    const normalizedName = PoolsService.normalizePoolIdentityField(name);
+    const normalizedSymbol = PoolsService.normalizePoolIdentityField(symbol);
 
     if (!normalizedName && !normalizedSymbol) {
       throw new BadRequestException('Provide name and/or symbol');
     }
 
-    const [nameTakenInPools, nameTakenInDrafts, symbolTakenInPools, symbolTakenInDrafts] = await Promise.all([
-      normalizedName
-        ? this.pools
-            .createQueryBuilder('p')
-            .where('UPPER(TRIM(p.name)) = :name', { name: normalizedName })
-            .getExists()
-        : Promise.resolve(false),
-      normalizedName
-        ? this.drafts
-            .createQueryBuilder('d')
-            .where('UPPER(TRIM(d.name)) = :name', { name: normalizedName })
-            .getExists()
-        : Promise.resolve(false),
-      normalizedSymbol
-        ? this.pools
-            .createQueryBuilder('p')
-            .where('UPPER(TRIM(p.symbol)) = :symbol', { symbol: normalizedSymbol })
-            .getExists()
-        : Promise.resolve(false),
-      normalizedSymbol
-        ? this.drafts
-            .createQueryBuilder('d')
-            .where('UPPER(TRIM(d.symbol)) = :symbol', { symbol: normalizedSymbol })
-            .getExists()
-        : Promise.resolve(false),
+    const [nameTaken, symbolTaken] = await Promise.all([
+      normalizedName ? this.isPoolNameTaken(normalizedName) : Promise.resolve(false),
+      normalizedSymbol ? this.isPoolSymbolTaken(normalizedSymbol) : Promise.resolve(false),
     ]);
 
     return {
-      nameUnique: normalizedName ? !(nameTakenInPools || nameTakenInDrafts) : true,
-      symbolUnique: normalizedSymbol ? !(symbolTakenInPools || symbolTakenInDrafts) : true,
+      nameUnique: normalizedName ? !nameTaken : true,
+      symbolUnique: normalizedSymbol ? !symbolTaken : true,
     };
   }
 
@@ -219,8 +218,8 @@ export class PoolsService {
    * by an admin from the portal; this path does not send a factory transaction.
    */
   async createPoolDirect(borrowerIdentifier: string, dto: CreatePoolDto, file?: Express.Multer.File) {
-    const normalizedName = (dto.name || '').trim().toUpperCase();
-    const normalizedSymbol = (dto.symbol || '').trim().toUpperCase();
+    const normalizedName = PoolsService.normalizePoolIdentityField(dto.name);
+    const normalizedSymbol = PoolsService.normalizePoolIdentityField(dto.symbol);
 
     if (!normalizedName) {
       throw new BadRequestException('Pool name is required');

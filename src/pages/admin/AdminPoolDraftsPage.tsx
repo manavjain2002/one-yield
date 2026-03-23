@@ -2,7 +2,8 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { useAdminPoolDrafts, useAdminPoolDraft } from '@/hooks/useAdminPoolDrafts';
 import { useAdminPoolActions } from '@/hooks/useAdminPoolActions';
 import { Button } from '@/components/ui/button';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useAdminDraftSelection } from '@/hooks/useAdminDraftSelection';
 import { cn } from '@/lib/utils';
 import { AddressLink } from '@/components/AddressLink';
 import { Loader2, FileText, Download, CheckCircle2, ArrowRight } from 'lucide-react';
@@ -146,20 +147,7 @@ function DraftDetailView({ id }: { id: string }) {
 
 export default function AdminPoolDraftsPage() {
   const { data: drafts = [], isLoading } = useAdminPoolDrafts();
-  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
-  useEffect(() => {
-    if (drafts.length === 0) {
-      setSelectedDraftId(null);
-      return;
-    }
-    if (!selectedDraftId) {
-      setSelectedDraftId(drafts[0].id);
-      return;
-    }
-    if (!drafts.some((d) => d.id === selectedDraftId)) {
-      setSelectedDraftId(drafts[0].id);
-    }
-  }, [drafts, selectedDraftId]);
+  const [selectedDraftId, setSelectedDraftId] = useAdminDraftSelection(drafts);
 
   return (
     <DashboardLayout>

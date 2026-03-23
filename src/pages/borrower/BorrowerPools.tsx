@@ -11,9 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SearchableSelect } from '@/components/ui/searchable-select';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { api, getErrorMessage, isApiConfigured } from '@/lib/api';
+import { usePoolIdentityAvailability } from '@/hooks/usePoolIdentityAvailability';
 import { RepayModal } from '@/components/RepayModal';
 import type { Pool } from '@/data/mockData';
 import { useAccount } from 'wagmi';
@@ -36,8 +37,6 @@ export default function BorrowerPools() {
   const [tokenAddress, setTokenAddress] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [expandedPoolId, setExpandedPoolId] = useState<string | null>(null);
-  const [debouncedName, setDebouncedName] = useState('');
-  const [debouncedSymbol, setDebouncedSymbol] = useState('');
 
   // Repay Modal State
   const [selectedRepayPool, setSelectedRepayPool] = useState<Pool | null>(null);
@@ -55,37 +54,14 @@ export default function BorrowerPools() {
   const createPool = useCreatePool();
   const { isConnected: isWeb3Connected } = useAccount();
   const { openConnectModal } = useConnectModal();
-  const normalizedName = name.trim().toUpperCase();
-  const normalizedSymbol = symbol.trim().toUpperCase();
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDebouncedName(normalizedName);
-      setDebouncedSymbol(normalizedSymbol);
-    }, 350);
-    return () => window.clearTimeout(timer);
-  }, [normalizedName, normalizedSymbol]);
-
-  const { data: identityAvailability, isFetching: isCheckingIdentity } = useQuery({
-    queryKey: ['pools', 'identity-availability', debouncedName, debouncedSymbol],
-    enabled: isApiConfigured() && role === 'borrower' && (!!debouncedName || !!debouncedSymbol),
-    queryFn: async () => {
-      const { data } = await api.get<{ nameUnique: boolean; symbolUnique: boolean }>(
-        '/pools/identity-availability',
-        {
-          params: {
-            name: debouncedName || undefined,
-            symbol: debouncedSymbol || undefined,
-          },
-        },
-      );
-      return data;
-    },
-  });
-
-  const nameUnique = normalizedName ? identityAvailability?.nameUnique !== false : true;
-  const symbolUnique = normalizedSymbol ? identityAvailability?.symbolUnique !== false : true;
-  const hasIdentityConflict = !nameUnique || !symbolUnique;
+  const {
+    normalizedName,
+    normalizedSymbol,
+    isCheckingIdentity,
+    nameUnique,
+    symbolUnique,
+    hasIdentityConflict,
+  } = usePoolIdentityAvailability(name, symbol, role);
 
   // Backend returns only the logged-in borrower's pools — no client-side wallet filter needed
   const borrowerPools = myPoolRows;
