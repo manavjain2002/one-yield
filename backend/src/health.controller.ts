@@ -6,6 +6,7 @@ export class HealthController {
   @Get('health')
   @SkipThrottle()
   health() {
+    
     return { status: 'ok', service: 'oneyield-api' };
   }
 }
