@@ -1,62 +1,68 @@
-# OneYield API
+# OneYield API (NestJS)
 
-NestJS backend: Hedera contract execution (queued), Mirror Node indexer, JWT wallet auth, PostgreSQL, Redis/BullMQ, Socket.IO events, oracle cron.
+This folder is the **NestJS** backend for OneYield. For product overview, architecture, user flows, deployment, and frontend documentation, see the **[root README.md](../README.md)**.
 
-## Prerequisites
-
-- Node.js 18+
-- PostgreSQL 16
-- Redis 7
+---
 
 ## Quick start
 
+**Prerequisites:** Node.js **20+**, PostgreSQL **16**, Redis **7**.
+
 ```bash
+# From repository root — Postgres + Redis
+docker compose up -d
+
 cd backend
 cp .env.example .env
-# Edit .env: database, redis, FACTORY_CONTRACT_ID, signer keys (testnet only)
+# Edit .env: database, redis, JWT, CORS, RPC, factory/token addresses, signer keys (testnet only)
 
-# From repo root
-docker compose up -d postgres redis
-
-cd backend
 npm install
 npm run start:dev
 ```
 
-- API: `http://localhost:3001`
-- Health: `GET /health`
-- WebSocket namespace: `/events` (same port; set `VITE_WS_URL=http://localhost:3001` on the frontend if using WS)
+- **API:** `http://localhost:3001`
+- **Health:** `GET /health`
+- **WebSocket:** namespace `/events` on the same port (configure `VITE_WS_URL` on the frontend to this origin)
 
-## Signer keys (dev)
+---
 
-Set `*_ACCOUNT_ID` and `*_PRIVATE_KEY` pairs for each role that will submit transactions. Dedicated borrower wallets: `DEDICATED_WALLETS_JSON=[{"accountId":"0.0.x","privateKey":"..."}]`.
+## API modules (reference)
 
-**Never commit real keys.** Production: HashiCorp Vault / AWS Secrets Manager (replace `SignerService` loader).
+| Module | Responsibility |
+|--------|----------------|
+| `AuthModule` | `POST /auth/challenge`, `/auth/verify`, `/auth/role`, `/auth/login`, `/auth/register`, `/auth/refresh`, `GET /auth/username-available` |
+| `PoolsModule` | Pool CRUD and role-scoped routes under `/pools`, `/borrower`, `/lender`, `/manager`, `/admin` ([`src/pools/pools.controller.ts`](src/pools/pools.controller.ts)) |
+| `QueueModule` | BullMQ worker + per-wallet sequencing ([`src/queue/tx.processor.ts`](src/queue/tx.processor.ts)) |
+| `ContractsModule` | ethers.js contract helpers for queued txs |
+| `OracleModule` | Cron + `POST /admin/oracle/run-aum-update` ([`src/oracle/oracle.controller.ts`](src/oracle/oracle.controller.ts)) |
+| `WebsocketModule` | Socket.IO `/events` gateway |
+| `ScreeningModule` | Chainalysis stub (`CHAINALYSIS_API_KEY`) |
 
-## Main modules
+There is **no** separate Mirror Node indexer Nest module; the app relies on **`POST /pools/confirm-tx`**, **`POST /pools/record-activity`**, and queue receipts to stay consistent with chain state (see root README).
 
-| Module        | Responsibility                                      |
-|---------------|-----------------------------------------------------|
-| `AuthModule`  | `POST /auth/challenge`, `/auth/verify`, `/auth/role` |
-| `PoolsModule` | Pools CRUD routes, borrower/lender/manager paths   |
-| `QueueModule` | BullMQ `hedera-tx` worker + per-wallet sequencing   |
-| `IndexerModule` | Mirror poll + event decode → Postgres            |
-| `OracleModule` | Cron AUM bump (maintenance window aware)           |
-| `ScreeningModule` | Chainalysis stub (`CHAINALYSIS_API_KEY`)       |
+---
 
-## Security (Phase 7)
+## Signer keys (development)
 
-- Global rate limit: `ThrottlerModule` (100/min default; stricter on tx routes).
-- Stricter limits on `POST` pool/manager/borrower actions.
-- `ChainalysisService` is a stub until API is wired.
+Set platform `*_PRIVATE_KEY` values in `.env` for roles that submit transactions via the queue. **Never commit real keys.** In production, load secrets from HashiCorp Vault, AWS Secrets Manager, or your host’s secret store.
 
-## E2E (Phase 8)
+Optional `DEDICATED_WALLETS_JSON` is documented in [`.env.example`](.env.example).
 
-With Postgres + Redis + `.env` configured:
+---
+
+## Security
+
+- Global rate limit: `ThrottlerModule` (100/min default; stricter limits on selected routes; see root README).
+- `ChainalysisService` remains a stub until a real API is wired.
+
+---
+
+## Tests
 
 ```bash
 cd backend
+npm run test
 npm run test:e2e
 ```
 
-Full on-chain E2E requires deployed factory/pool contracts on Hedera testnet and all signer env vars.
+Full manual testnet flow: [../docs/E2E-TESTNET.md](../docs/E2E-TESTNET.md).

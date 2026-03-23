@@ -69,7 +69,7 @@ export default function LenderPools() {
                         variant="ghost" 
                         size="sm" 
                         onClick={() => setExpandedPoolId(isExpanded ? null : pool.id)}
-                        className="rounded-xl flex-1 sm:flex-none text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors"
+                        className="rounded-xl flex-1 sm:flex-none text-xs font-bold uppercase tracking-widest text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
                       >
                         {isExpanded ? <ChevronUp className="w-4 h-4 mr-1" /> : <ChevronDown className="w-4 h-4 mr-1" />}
                         Details

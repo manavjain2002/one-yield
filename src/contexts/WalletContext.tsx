@@ -172,7 +172,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.warn('[WalletContext] Web3 disconnect warning:', e);
     }
-    setState(emptyWalletState());
+    // Suppress landing-page auto verify while wallet providers finish disconnecting.
+    setState((prev) => ({
+      ...emptyWalletState(),
+      network: prev.network,
+      blockWeb3AutoVerify: true,
+    }));
   }, [wagmiDisconnect]);
 
   const logoutSession = useCallback(() => {

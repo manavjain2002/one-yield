@@ -11,6 +11,7 @@ import { useConnectModal } from '@rainbow-me/rainbowkit';
 import { parseUnits } from 'ethers';
 import { useQuery } from '@tanstack/react-query';
 import { getAssetManagerRead } from '@/lib/contracts';
+import { getTokenDecimalInputError } from '@/lib/erc20-amount';
 
 interface RepayModalProps {
   isOpen: boolean;
@@ -33,7 +34,6 @@ export function RepayModal({
   const { isConnected, address } = useAccount();
   const { openConnectModal } = useConnectModal();
 
-  // Fetch on-chain v1Pools when borrowerPools from DB is empty (e.g. child pools added only on-chain)
   const { data: onChainPools = [] } = useQuery({
     queryKey: ['repay-v1-pools', fundManagerAddress],
     queryFn: async () => {
@@ -55,7 +55,6 @@ export function RepayModal({
     refetchInterval: 10000,
   });
 
-  // Use borrowerPools from DB if available, else fall back to on-chain data
   const authorizedPools = (borrowerPools?.length ? borrowerPools : onChainPools.map(p => ({
     v1PoolId: p.v1PoolId,
     dedicatedWalletAddress: p.wallet,
@@ -67,7 +66,14 @@ export function RepayModal({
   const isAuthorized = !!matchedBorrowerPool;
   const v1PoolId = matchedBorrowerPool ? matchedBorrowerPool.v1PoolId : '';
 
-  const { allowanceQuery, approve, repay, tokenDecimals } = useBorrowerWeb3Actions({
+  const {
+    allowanceQuery,
+    approve,
+    repay,
+    tokenDecimals,
+    isDecimalsReady,
+    isDecimalsLoading,
+  } = useBorrowerWeb3Actions({
     poolTokenAddress,
     fundManagerAddress,
     poolId
@@ -75,17 +81,27 @@ export function RepayModal({
 
   const totalHuman = (parseFloat(amount) || 0) + (parseFloat(fee) || 0);
 
-  // Match on-chain units exactly (avoid parseFloat → toString() float noise breaking parseUnits)
   let totalWei = 0n;
   try {
-    totalWei = parseUnits(amount || '0', tokenDecimals) + parseUnits(fee || '0', tokenDecimals);
+    if (isDecimalsReady) {
+      totalWei = parseUnits(amount || '0', tokenDecimals) + parseUnits(fee || '0', tokenDecimals);
+    }
   } catch {
     // ignore parse errors while typing
   }
 
   const allowanceWei = allowanceQuery.data ?? 0n;
-  const needsApproval = totalWei > 0n && allowanceWei < totalWei;
+  const needsApproval = isDecimalsReady && totalWei > 0n && allowanceWei < totalWei;
   const isPending = approve.isPending || repay.isPending;
+
+  const validateInputsForTx = (): boolean => {
+    const err = getTokenDecimalInputError(amount, fee || '0', tokenDecimals);
+    if (err) {
+      toast.error(err);
+      return false;
+    }
+    return true;
+  };
 
   const handleNext = () => {
     if (isConnected && !isAuthorized) {
@@ -96,25 +112,48 @@ export function RepayModal({
       toast.error('Please enter a valid amount');
       return;
     }
+    if (!isDecimalsReady) {
+      toast.error('Token info is still loading. Please wait.');
+      return;
+    }
+    if (!validateInputsForTx()) return;
     setStep('confirm');
   };
 
-  const handleActionClick = async () => {
+  const handleApprove = async () => {
     if (!isConnected) {
       openConnectModal?.();
       return;
     }
+    if (!isDecimalsReady) {
+      toast.error('Token info is still loading. Please wait.');
+      return;
+    }
+    if (!validateInputsForTx()) return;
+    if (!needsApproval) return;
 
+    try {
+      await approve.mutateAsync({ amount, fee });
+    } catch {
+      // Error handled in hook
+    }
+  };
+
+  const handlePay = async () => {
+    if (!isConnected) {
+      openConnectModal?.();
+      return;
+    }
+    if (!isDecimalsReady) {
+      toast.error('Token info is still loading. Please wait.');
+      return;
+    }
+    if (!validateInputsForTx()) return;
     if (needsApproval) {
-      try {
-        await approve.mutateAsync({ amount, fee });
-      } catch {
-        // Error handled in hook
-      }
+      toast.error('Approve the pool token for the fund manager first.');
       return;
     }
 
-    // Ready to repay
     try {
       await repay.mutateAsync({
         v1PoolId,
@@ -139,21 +178,6 @@ export function RepayModal({
     onClose();
     reset();
   };
-
-  let buttonText = 'Confirm Repayment';
-  if (step === 'input') {
-    buttonText = 'Next Step';
-  } else if (!isConnected) {
-    buttonText = 'Connect Wallet to Repay';
-  } else if (!isAuthorized) {
-    buttonText = 'Wallet Not Authorized';
-  } else if (approve.isPending) {
-    buttonText = 'Approving...';
-  } else if (needsApproval) {
-    buttonText = `Approve ${symbol}`;
-  } else if (repay.isPending) {
-    buttonText = 'Processing...';
-  }
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -245,12 +269,73 @@ export function RepayModal({
                 </div>
               </div>
 
+              {isDecimalsLoading && (
+                <p className="text-xs text-muted-foreground">Loading token decimals…</p>
+              )}
+
               <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/10 flex gap-3 items-start">
                 <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-700/80 leading-relaxed font-medium">
                   This transaction will execute directly from your Web3 wallet. Ensure you have the required balance and {symbol} allowance.
                 </p>
               </div>
+
+              {step === 'confirm' && isConnected && isAuthorized && (
+                <div className="space-y-3">
+                  {needsApproval ? (
+                    <>
+                      <Button
+                        type="button"
+                        onClick={handleApprove}
+                        disabled={isPending || !isDecimalsReady || isDecimalsLoading}
+                        className="w-full rounded-xl h-12 font-bold shadow-lg gradient-primary glow-primary"
+                      >
+                        {approve.isPending ? 'Approving…' : `Approve ${symbol}`}
+                      </Button>
+                      <p className="text-sm text-muted-foreground text-center">
+                        Approve the pool token for the fund manager first. Then you can pay.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={handlePay}
+                        disabled
+                        className="w-full rounded-xl h-12 font-bold opacity-60"
+                      >
+                        Pay
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      type="button"
+                      onClick={handlePay}
+                      disabled={isPending || !isDecimalsReady || isDecimalsLoading}
+                      className="w-full rounded-xl h-12 font-bold shadow-lg gradient-primary glow-primary"
+                    >
+                      {repay.isPending ? 'Processing…' : 'Confirm repayment'}
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {step === 'confirm' && !isConnected && (
+                <Button
+                  type="button"
+                  onClick={() => openConnectModal?.()}
+                  className="w-full rounded-xl h-12 font-bold bg-primary text-primary-foreground hover:opacity-90 shadow-primary/30"
+                >
+                  Connect wallet to repay
+                </Button>
+              )}
+
+              {step === 'confirm' && isConnected && !isAuthorized && (
+                <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 flex gap-3 items-start">
+                  <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                  <p className="text-xs text-destructive font-medium leading-relaxed">
+                    The connected wallet is not an authorized repayment address for this pool.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -260,33 +345,24 @@ export function RepayModal({
                 variant="ghost"
                 onClick={() => setStep('input')}
                 disabled={isPending}
-                className="rounded-xl flex-1 h-12 font-bold text-muted-foreground"
+                className="rounded-xl w-full h-12 font-bold text-muted-foreground"
               >
                 <ChevronLeft className="w-4 h-4 mr-1" /> Back
               </Button>
             )}
 
-            <Button
-              onClick={step === 'input' ? handleNext : handleActionClick}
-              disabled={isPending || (isConnected && !isAuthorized)}
-              className={`rounded-xl h-12 font-bold shadow-lg transition-all active:scale-95 ${
-                step === 'confirm' ? 'flex-[2]' : 'w-full'
-              } ${
-                buttonText === 'Connect Wallet to Repay'
-                  ? 'bg-primary text-primary-foreground hover:opacity-90 shadow-primary/30'
-                  : 'gradient-primary glow-primary'
-              } disabled:opacity-50 disabled:cursor-not-allowed`}
-            >
-              {step === 'input' ? (
-                <>Next Step <ArrowRight className="w-4 h-4 ml-2" /></>
-              ) : (
-                buttonText
-              )}
-            </Button>
+            {step === 'input' && (
+              <Button
+                onClick={handleNext}
+                disabled={isPending || (isConnected && !isAuthorized) || isDecimalsLoading}
+                className="rounded-xl h-12 font-bold shadow-lg transition-all active:scale-95 w-full gradient-primary glow-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next Step <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            )}
           </div>
         </div>
       </DialogContent>
     </Dialog>
   );
 }
-

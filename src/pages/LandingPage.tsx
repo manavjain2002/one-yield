@@ -162,7 +162,7 @@ export default function LandingPage() {
         {/* Tagline */}
         <div className="max-w-2xl space-y-4 animate-fade-in" style={{ animationDelay: '0.1s' }}>
           <p className="text-xl font-medium text-foreground md:text-2xl">
-            Institutional-Grade RWA Lending
+            Institutional-Grade Tokenized RWA Lending 
           </p>
           <p className="text-base text-muted-foreground">
             Transparent, on-chain lending and borrowing protocol for real-world assets.
