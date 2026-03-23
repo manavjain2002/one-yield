@@ -10,6 +10,12 @@ import { parseUnits, formatUnits } from 'ethers';
 import type { Pool } from '@/data/mockData';
 import { useTransaction } from '@/contexts/TransactionContext';
 
+/** LP share token used for balance reads (matches pool display fallbacks elsewhere). */
+function getLpTokenReadAddress(pool: Pool): string {
+  const lp = pool.lpTokenAddress?.trim();
+  return lp || pool.contractAddress;
+}
+
 interface TransactModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -21,7 +27,23 @@ export function TransactModal({ isOpen, onClose, pool }: TransactModalProps) {
   const [amount, setAmount] = useState('');
   const { startTransaction, endTransaction } = useTransaction();
 
-  const { approve, deposit, withdraw, allowance, isPaused, maxWithdraw, isLoadingLimits } = useLenderActions(pool);
+  const { approve, deposit, withdraw, allowance, isPaused, isLoadingLimits, address } = useLenderActions(pool);
+
+  const lpTokenReadAddress = getLpTokenReadAddress(pool);
+
+  const lpTokenBalanceQuery = useQuery({
+    queryKey: ['transact-modal', 'lp-token-balance', lpTokenReadAddress, address],
+    queryFn: async () => {
+      if (!lpTokenReadAddress || !address) return 0n;
+      const token = getERC20Read(lpTokenReadAddress);
+      return token.balanceOf(address);
+    },
+    enabled: isOpen && mode === 'withdraw' && !!lpTokenReadAddress && !!address,
+    refetchInterval: 2000,
+  });
+
+  const maxWithdrawFromLpBalance = lpTokenBalanceQuery.data ?? 0n;
+  const maxWithdrawFromLpStr = formatUnits(maxWithdrawFromLpBalance, 6);
 
   const amountBN = amount && !isNaN(Number(amount)) ? parseUnits(amount, 6) : 0n;
   const needsApproval = mode === 'deposit' && amountBN > 0n && amountBN > allowance;
@@ -105,7 +127,11 @@ export function TransactModal({ isOpen, onClose, pool }: TransactModalProps) {
   if (withdraw.isPending) buttonText = 'Withdrawing...';
 
   const isPending = approve.isPending || deposit.isPending || withdraw.isPending;
-  const maxWithdrawStr = formatUnits(maxWithdraw, 6);
+
+  const withdrawExceedsLpBalance =
+    mode === 'withdraw' &&
+    lpTokenBalanceQuery.isSuccess &&
+    amountBN > maxWithdrawFromLpBalance;
 
   useEffect(() => {
     if (!isOpen) { setAmount(''); setMode('deposit'); }
@@ -142,8 +168,19 @@ export function TransactModal({ isOpen, onClose, pool }: TransactModalProps) {
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">You pay</span>
                 {mode === 'withdraw' && (
-                  <button onClick={() => setAmount(maxWithdrawStr)} className="text-[10px] text-primary font-bold hover:underline">
-                    Max: {Number(maxWithdrawStr).toLocaleString()}
+                  <button
+                    type="button"
+                    onClick={() => setAmount(maxWithdrawFromLpStr)}
+                    disabled={lpTokenBalanceQuery.isFetching && lpTokenBalanceQuery.data === undefined}
+                    className="text-[10px] text-primary font-bold hover:underline disabled:opacity-50 disabled:no-underline"
+                  >
+                    {lpTokenBalanceQuery.isFetching && lpTokenBalanceQuery.data === undefined ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Loader2 className="h-3 w-3 animate-spin" /> Max
+                      </span>
+                    ) : (
+                      <>Max: {Number(maxWithdrawFromLpStr).toLocaleString()}</>
+                    )}
                   </button>
                 )}
               </div>
@@ -200,7 +237,9 @@ export function TransactModal({ isOpen, onClose, pool }: TransactModalProps) {
 
           <Button
             className="w-full gradient-primary font-bold h-12 rounded-xl shadow-lg"
-            disabled={isPending || !amount || Number(amount) <= 0 || isPaused}
+            disabled={
+              isPending || !amount || Number(amount) <= 0 || isPaused || withdrawExceedsLpBalance
+            }
             onClick={handleAction}
           >
             {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

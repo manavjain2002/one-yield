@@ -36,6 +36,13 @@ import { CurrentUser, JwtUser } from '../auth/current-user.decorator';
 import { PoolEntity } from '../entities/pool.entity';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 
+/** Shared limit for state-changing pool routes (10 req / 60s). */
+const MUTATION_THROTTLE = { default: { limit: 10, ttl: 60_000 } } as const;
+
+function poolActorIdentifier(user: JwtUser): string {
+  return user.walletAddress || user.username || user.userId;
+}
+
 // ─── Request DTOs ────────────────────────────────────────────
 
 class CreatePoolBody {
@@ -140,6 +147,12 @@ export class PoolsController {
     return value;
   }
 
+  private requireConfiguredDefaultPoolToken(): string {
+    const poolTokenAddress = this.config.get<string>('blockchain.poolTokenAddress')?.trim();
+    if (!poolTokenAddress) throw new BadRequestException('POOL_TOKEN_ADDRESS must be configured');
+    return poolTokenAddress;
+  }
+
   @Get()
   @SkipThrottle()
   list(@Query('status') status?: PoolEntity['status']) {
@@ -193,7 +206,7 @@ export class PoolsController {
    * On-chain pool creation is done by an admin from the admin portal.
    */
   @Post()
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle(MUTATION_THROTTLE)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('borrower')
   @UseInterceptors(FileInterceptor('file'))
@@ -205,17 +218,16 @@ export class PoolsController {
     const poolManagerAddress = this.getRequiredAddress('poolManagerAddress', 'POOL_MANAGER_ADDRESS');
     const oracleManagerAddress = this.getRequiredAddress('oracleManagerAddress', 'ORACLE_MANAGER_ADDRESS');
     const feeCollectorAddress = this.getRequiredAddress('feeCollectorAddress', 'FEE_COLLECTOR_ADDRESS');
-    const poolTokenAddress = this.config.get<string>('blockchain.poolTokenAddress')?.trim();
-    if (!poolTokenAddress) throw new BadRequestException('POOL_TOKEN_ADDRESS must be configured');
+    const defaultPoolToken = this.requireConfiguredDefaultPoolToken();
 
-    const identifier = user.walletAddress || user.username || user.userId;
+    const identifier = poolActorIdentifier(user);
     const normalizedName = body.name.trim().toUpperCase();
     const normalizedSymbol = body.symbol.trim().toUpperCase();
     return this.pools.createPoolDirect(identifier, {
       name: normalizedName,
       symbol: normalizedSymbol,
       poolManagerAddress,
-      poolTokenAddress: body.poolTokenAddress || poolTokenAddress,
+      poolTokenAddress: body.poolTokenAddress || defaultPoolToken,
       oracleManagerAddress,
       feeCollectorAddress,
       apyBasisPoints: body.apyBasisPoints ?? 500,
@@ -226,7 +238,7 @@ export class PoolsController {
 
 
   @Patch(':id/allocations')
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle(MUTATION_THROTTLE)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('borrower')
   setAllocations(
@@ -234,12 +246,12 @@ export class PoolsController {
     @Param('id') id: string,
     @Body() body: SetAllocationsBody,
   ) {
-    const identifier = user.walletAddress || user.username || user.userId;
+    const identifier = poolActorIdentifier(user);
     return this.pools.setAllocations(id, body.allocations, identifier);
   }
 
   @Post(':id/activate')
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle(MUTATION_THROTTLE)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('manager')
   activate(@Param('id') id: string) {
@@ -247,7 +259,7 @@ export class PoolsController {
   }
 
   @Post(':id/pause')
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle(MUTATION_THROTTLE)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('manager')
   pause(@Param('id') id: string) {
@@ -255,7 +267,7 @@ export class PoolsController {
   }
 
   @Post(':id/unpause')
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle(MUTATION_THROTTLE)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('manager')
   unpause(@Param('id') id: string) {
@@ -263,7 +275,7 @@ export class PoolsController {
   }
 
   @Post(':id/deploy-funds')
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle(MUTATION_THROTTLE)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('manager')
   deploy(@Param('id') id: string) {
@@ -271,7 +283,7 @@ export class PoolsController {
   }
 
   @Post(':id/send-to-reserve')
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle(MUTATION_THROTTLE)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('manager')
   sendReserve(@Param('id') id: string, @Body() body: SendReserveBody) {
@@ -385,11 +397,11 @@ export class BorrowerRoutesController {
   }
 
   @Post('repay')
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle(MUTATION_THROTTLE)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('borrower')
   repay(@CurrentUser() user: JwtUser, @Body() body: RepayBody) {
-    const identifier = user.walletAddress || user.username || user.userId;
+    const identifier = poolActorIdentifier(user);
     return this.pools.repay(
       identifier,
       body.poolId,
