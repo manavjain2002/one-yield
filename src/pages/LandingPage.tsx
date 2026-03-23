@@ -200,7 +200,7 @@ export default function LandingPage() {
             size="lg"
             variant="outline"
             onClick={() => { setCredMode('login'); setShowCredsModal(true); }}
-            className="h-14 rounded-2xl px-8 text-base font-semibold border-primary/20 bg-primary/5 hover:bg-primary/10 transition-all hover:scale-105"
+            className="h-14 rounded-2xl px-8 text-base font-semibold border-primary/30 bg-primary/5 text-foreground hover:bg-primary/15 hover:text-foreground transition-all hover:scale-105"
           >
             <Shield className="mr-2 h-5 w-5" />
             Borrower / Admin Login
