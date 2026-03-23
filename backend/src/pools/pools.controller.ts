@@ -481,8 +481,13 @@ export class ManagerRoutesController {
   transactions(
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
+    @Query('category') category?: string,
   ) {
-    return this.poolsService.getManagerTransactions(page, limit);
+    return this.poolsService.getManagerTransactions(
+      Number(page) || 1,
+      Number(limit) || 10,
+      category,
+    );
   }
 }
 

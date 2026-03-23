@@ -6,14 +6,25 @@ import { AddressLink } from '@/components/AddressLink';
 import { Landmark, Clock, BarChart3, Settings2, FileEdit } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { TransactionList } from '@/components/TransactionList';
-import { useTransactionHistory } from '@/hooks/useTransactionHistory';
+import { useTransactionHistory, type ManagerTxCategory } from '@/hooks/useTransactionHistory';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
+const AUDIT_TABS: { value: ManagerTxCategory; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'deployments', label: 'Deployments' },
+  { value: 'deposits', label: 'Deposits' },
+  { value: 'withdrawals', label: 'Withdrawals' },
+  { value: 'repayments', label: 'Repayments' },
+  { value: 'operations', label: 'Operations' },
+];
+
 export default function ManagerDashboard() {
   const { data: summary } = useManagerSummary();
-  const { data: txData, isLoading: isLoadingTxs } = useTransactionHistory(1, 5);
+  const [auditCategory, setAuditCategory] = useState<ManagerTxCategory>('all');
+  const { data: txData, isLoading: isLoadingTxs } = useTransactionHistory(1, 25, auditCategory);
   const [expandedPoolId, setExpandedPoolId] = useState<string | null>(null);
 
   const pools = summary?.poolsUi ?? [];
@@ -135,15 +146,28 @@ export default function ManagerDashboard() {
         </div>
 
         <div className="space-y-4">
-          <div className="flex items-center justify-between px-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-2">
             <h2 className="text-lg font-bold flex items-center gap-2">
               <Clock className="w-5 h-5 text-primary" />
               Audit Log
             </h2>
-            <Link to="/manager/history" className="text-sm font-medium text-primary hover:underline">
+            <Link to="/manager/history" className="text-sm font-medium text-primary hover:underline shrink-0">
               Full History Library
             </Link>
           </div>
+          <Tabs
+            value={auditCategory}
+            onValueChange={(v) => setAuditCategory(v as ManagerTxCategory)}
+            className="space-y-3"
+          >
+            <TabsList className="bg-secondary/50 rounded-xl flex flex-wrap h-auto gap-1 p-1 w-full sm:w-auto justify-start">
+              {AUDIT_TABS.map(({ value, label }) => (
+                <TabsTrigger key={value} value={value} className="rounded-lg text-xs sm:text-sm">
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
           <div className="glass-card rounded-2xl p-4 overflow-hidden shadow-xl">
             <TransactionList transactions={txData?.items || []} isLoading={isLoadingTxs} />
           </div>

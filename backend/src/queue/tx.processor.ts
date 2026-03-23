@@ -7,6 +7,8 @@ import { ContractService } from '../contracts/contract.service';
 import { EventsGateway } from '../websocket/events.gateway';
 import { QueueJobEntity } from '../entities/queue-job.entity';
 import { PoolDraftEntity } from '../entities/pool-draft.entity';
+import { PoolEntity } from '../entities/pool.entity';
+import { TransactionRecordEntity } from '../entities/transaction-record.entity';
 import { TX_QUEUE, TxJobPayload } from './tx-queue.constants';
 import {
   POOL_FACTORY_ABI,
@@ -35,6 +37,10 @@ export class TxProcessor extends WorkerHost {
     private readonly queueJobRepo: Repository<QueueJobEntity>,
     @InjectRepository(PoolDraftEntity)
     private readonly draftRepo: Repository<PoolDraftEntity>,
+    @InjectRepository(TransactionRecordEntity)
+    private readonly txRepo: Repository<TransactionRecordEntity>,
+    @InjectRepository(PoolEntity)
+    private readonly poolRepo: Repository<PoolEntity>,
   ) {
     super();
   }
@@ -50,8 +56,9 @@ export class TxProcessor extends WorkerHost {
     } = job.data;
 
     // Mark job as processing
+    const bullJobId = String(job.id ?? '');
     const jobEntity = await this.queueJobRepo.findOne({
-      where: { jobId: job.id ?? '' },
+      where: { jobId: bullJobId },
     });
     if (jobEntity) {
       jobEntity.status = 'processing';
@@ -78,6 +85,26 @@ export class TxProcessor extends WorkerHost {
         jobEntity.txHash = txHash;
         jobEntity.processedAt = new Date();
         await this.queueJobRepo.save(jobEntity);
+      }
+
+      const pendingHash = `pending-${bullJobId}`;
+      const trow = await this.txRepo.findOne({ where: { txHash: pendingHash } });
+      if (trow) {
+        trow.txHash = txHash;
+        trow.status = status;
+        trow.confirmedAt = new Date();
+        if (receipt?.blockNumber != null) {
+          trow.blockNumber = String(receipt.blockNumber);
+        }
+        if (meta?.poolId && !trow.poolAddress) {
+          const pool = await this.poolRepo.findOne({
+            where: { id: meta.poolId },
+          });
+          if (pool?.contractAddress) {
+            trow.poolAddress = pool.contractAddress.trim().toLowerCase();
+          }
+        }
+        await this.txRepo.save(trow);
       }
 
       // Link draft if this was a createPool tx

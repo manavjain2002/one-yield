@@ -53,8 +53,10 @@ export function useManagerTxHistory() {
     queryFn: async (): Promise<TxHistory[]> => {
       if (!isApiConfigured()) return [];
       try {
-        const { data } = await api.get<ApiTx[]>('/manager/transactions');
-        return (data ?? []).map(mapTx);
+        const { data } = await api.get<{ items: ApiTx[] }>('/manager/transactions', {
+          params: { page: 1, limit: 200 },
+        });
+        return (data?.items ?? []).map(mapTx);
       } catch {
         return [];
       }

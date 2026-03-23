@@ -1,6 +1,13 @@
 import { ExternalLink } from 'lucide-react';
 
 export function HashScanLink({ txHash, label }: { txHash: string; label?: string }) {
+  if (txHash.startsWith('pending-')) {
+    return (
+      <span className="text-xs font-mono text-muted-foreground" title={txHash}>
+        {label ?? 'Queued…'}
+      </span>
+    );
+  }
   return (
     <a
       href={`https://hashscan.io/testnet/transaction/${txHash}`}

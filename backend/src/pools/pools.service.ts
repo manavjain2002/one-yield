@@ -418,7 +418,7 @@ export class PoolsService {
       meta: { poolId: pool.id },
     });
 
-    await this.recordAction(pool.id, 'activate', '0', pool.contractAddress, result.jobId);
+    await this.recordAction(pool.id, 'activate', '0', pool.contractAddress, result.jobId, undefined, pool.contractAddress);
     return result;
   }
 
@@ -433,7 +433,7 @@ export class PoolsService {
       meta: { poolId: pool.id },
     });
 
-    await this.recordAction(pool.id, 'pause', '0', pool.contractAddress, result.jobId);
+    await this.recordAction(pool.id, 'pause', '0', pool.contractAddress, result.jobId, undefined, pool.contractAddress);
     return result;
   }
 
@@ -448,7 +448,7 @@ export class PoolsService {
       meta: { poolId: pool.id },
     });
 
-    await this.recordAction(pool.id, 'unpause', '0', pool.contractAddress, result.jobId);
+    await this.recordAction(pool.id, 'unpause', '0', pool.contractAddress, result.jobId, undefined, pool.contractAddress);
     return result;
   }
 
@@ -463,7 +463,7 @@ export class PoolsService {
       meta: { poolId: pool.id },
     });
 
-    await this.recordAction(pool.id, 'deploy_funds', '0', pool.fundManagerAddress, result.jobId);
+    await this.recordAction(pool.id, 'deploy_funds', '0', pool.fundManagerAddress, result.jobId, pool.poolTokenAddress, pool.contractAddress);
     return result;
   }
 
@@ -484,7 +484,7 @@ export class PoolsService {
       { priority: 2 },
     );
 
-    await this.recordAction(pool.id, 'send_to_reserve', amount.toString(), pool.fundManagerAddress, result.jobId);
+    await this.recordAction(pool.id, 'send_to_reserve', amount.toString(), pool.fundManagerAddress, result.jobId, pool.poolTokenAddress, pool.contractAddress);
     return result;
   }
 
@@ -523,7 +523,7 @@ export class PoolsService {
       meta: { poolId: pool.id },
     });
 
-    await this.recordAction(pool.id, 'repay', amount.toString(), pool.fundManagerAddress, result.jobId);
+    await this.recordAction(pool.id, 'repay', amount.toString(), pool.fundManagerAddress, result.jobId, pool.poolTokenAddress, pool.contractAddress);
     return result;
   }
 
@@ -778,10 +778,24 @@ export class PoolsService {
     }));
   }
 
-  async getManagerTransactions(page: number = 1, limit: number = 10) {
-    const [items, total] = await this.txs
-      .createQueryBuilder('t')
-      .orderBy('t.createdAt', 'DESC')
+  private static readonly MANAGER_TX_CATEGORY_TYPES: Record<string, string[]> = {
+    deposits: ['deposit'],
+    withdrawals: ['withdraw', 'redeem'],
+    repayments: ['repay', 'repayment'],
+    deployments: ['deploy_funds', 'send_to_reserve'],
+    operations: ['create_pool', 'activate', 'pause', 'unpause', 'aum_update'],
+  };
+
+  async getManagerTransactions(page: number = 1, limit: number = 10, category?: string) {
+    const cat = (category || '').trim().toLowerCase();
+    const types = PoolsService.MANAGER_TX_CATEGORY_TYPES[cat];
+
+    const qb = this.txs.createQueryBuilder('t').orderBy('t.createdAt', 'DESC');
+    if (types?.length) {
+      qb.andWhere('t.type IN (:...types)', { types });
+    }
+
+    const [items, total] = await qb
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();
@@ -791,7 +805,7 @@ export class PoolsService {
       total,
       page,
       limit,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / limit) || 1,
     };
   }
   async recordManualActivity(fromAddress: string, dto: any) {
@@ -1145,15 +1159,18 @@ export class PoolsService {
     toAddress: string,
     jobId: string,
     tokenAddress?: string,
+    poolContractAddress?: string,
   ) {
+    const poolAddr = poolContractAddress?.trim().toLowerCase() || null;
     const tx = this.txs.create({
       txHash: `pending-${jobId}`,
       type: type as TxType,
       amount,
       toAddress,
-      tokenAddress,
+      tokenAddress: tokenAddress?.trim() || null,
       status: 'pending',
       poolId,
+      poolAddress: poolAddr,
     });
     await this.txs.save(tx);
   }

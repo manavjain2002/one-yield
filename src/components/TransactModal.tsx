@@ -27,23 +27,59 @@ export function TransactModal({ isOpen, onClose, pool }: TransactModalProps) {
   const [amount, setAmount] = useState('');
   const { startTransaction, endTransaction } = useTransaction();
 
-  const { approve, deposit, withdraw, allowance, isPaused, isLoadingLimits, address } = useLenderActions(pool);
+  const {
+    approve,
+    deposit,
+    redeem,
+    allowance,
+    isPaused,
+    isLoadingLimits,
+    address,
+    maxRedeem,
+  } = useLenderActions(pool);
 
   const lpTokenReadAddress = getLpTokenReadAddress(pool);
 
-  const lpTokenBalanceQuery = useQuery({
-    queryKey: ['transact-modal', 'lp-token-balance', lpTokenReadAddress, address],
+  /**
+   * Withdraw "You pay" is LP shares. Cap = min(vault maxWithdraw in asset terms, assets implied by LP balance),
+   * then convert to shares for Max + validation (ERC4626-aligned).
+   */
+  const withdrawMaxSharesQuery = useQuery({
+    queryKey: ['transact-modal', 'withdraw-max-shares', pool.contractAddress, lpTokenReadAddress, address],
     queryFn: async () => {
-      if (!lpTokenReadAddress || !address) return 0n;
+      if (!pool.contractAddress || !lpTokenReadAddress || !address) {
+        return { maxShares: 0n };
+      }
+      const vault = getLendingPoolRead(pool.contractAddress);
       const token = getERC20Read(lpTokenReadAddress);
-      return token.balanceOf(address);
+      const [maxWithdrawAssets, lpBalance] = await Promise.all([
+        vault.maxWithdraw(address).catch(() => 0n),
+        token.balanceOf(address).catch(() => 0n),
+      ]);
+      const assetsFromLp = await vault.convertToAssets(lpBalance).catch(() => 0n);
+      const maxAssets = maxWithdrawAssets < assetsFromLp ? maxWithdrawAssets : assetsFromLp;
+      let maxShares: bigint;
+      try {
+        maxShares = await vault.previewWithdraw(maxAssets);
+      } catch {
+        maxShares = await vault.convertToShares(maxAssets).catch(() => 0n);
+      }
+      if (maxShares > lpBalance) maxShares = lpBalance;
+      return { maxShares };
     },
-    enabled: isOpen && mode === 'withdraw' && !!lpTokenReadAddress && !!address,
+    enabled: isOpen && mode === 'withdraw' && !!pool.contractAddress && !!lpTokenReadAddress && !!address,
     refetchInterval: 2000,
   });
 
-  const maxWithdrawFromLpBalance = lpTokenBalanceQuery.data ?? 0n;
-  const maxWithdrawFromLpStr = formatUnits(maxWithdrawFromLpBalance, 6);
+  const maxSharesFromLiquidityAndBalance = withdrawMaxSharesQuery.data?.maxShares ?? 0n;
+  /** Also respect vault maxRedeem once limits are loaded so redeem() matches the UI cap. */
+  const maxWithdrawShares = (() => {
+    const raw = maxSharesFromLiquidityAndBalance;
+    if (isLoadingLimits) return raw;
+    if (maxRedeem === 0n) return 0n;
+    return raw < maxRedeem ? raw : maxRedeem;
+  })();
+  const maxWithdrawSharesStr = formatUnits(maxWithdrawShares, 6);
 
   const amountBN = amount && !isNaN(Number(amount)) ? parseUnits(amount, 6) : 0n;
   const needsApproval = mode === 'deposit' && amountBN > 0n && amountBN > allowance;
@@ -111,7 +147,8 @@ export function TransactModal({ isOpen, onClose, pool }: TransactModalProps) {
       if (mode === 'deposit') {
         await deposit.mutateAsync(amount);
       } else {
-        await withdraw.mutateAsync(amount);
+        // Withdraw UI is LP shares → ERC4626 redeem, not withdraw(assets).
+        await redeem.mutateAsync(amount);
       }
       setAmount('');
       onClose();
@@ -124,14 +161,14 @@ export function TransactModal({ isOpen, onClose, pool }: TransactModalProps) {
   if (needsApproval) buttonText = `Approve ${upperToken}`;
   if (approve.isPending) buttonText = 'Approving...';
   if (deposit.isPending) buttonText = 'Depositing...';
-  if (withdraw.isPending) buttonText = 'Withdrawing...';
+  if (redeem.isPending) buttonText = 'Withdrawing...';
 
-  const isPending = approve.isPending || deposit.isPending || withdraw.isPending;
+  const isPending = approve.isPending || deposit.isPending || redeem.isPending;
 
-  const withdrawExceedsLpBalance =
+  const withdrawExceedsMax =
     mode === 'withdraw' &&
-    lpTokenBalanceQuery.isSuccess &&
-    amountBN > maxWithdrawFromLpBalance;
+    withdrawMaxSharesQuery.isSuccess &&
+    amountBN > maxWithdrawShares;
 
   useEffect(() => {
     if (!isOpen) { setAmount(''); setMode('deposit'); }
@@ -170,16 +207,16 @@ export function TransactModal({ isOpen, onClose, pool }: TransactModalProps) {
                 {mode === 'withdraw' && (
                   <button
                     type="button"
-                    onClick={() => setAmount(maxWithdrawFromLpStr)}
-                    disabled={lpTokenBalanceQuery.isFetching && lpTokenBalanceQuery.data === undefined}
+                    onClick={() => setAmount(maxWithdrawSharesStr)}
+                    disabled={withdrawMaxSharesQuery.isFetching && withdrawMaxSharesQuery.data === undefined}
                     className="text-[10px] text-primary font-bold hover:underline disabled:opacity-50 disabled:no-underline"
                   >
-                    {lpTokenBalanceQuery.isFetching && lpTokenBalanceQuery.data === undefined ? (
+                    {withdrawMaxSharesQuery.isFetching && withdrawMaxSharesQuery.data === undefined ? (
                       <span className="inline-flex items-center gap-1">
                         <Loader2 className="h-3 w-3 animate-spin" /> Max
                       </span>
                     ) : (
-                      <>Max: {Number(maxWithdrawFromLpStr).toLocaleString()}</>
+                      <>Max: {Number(maxWithdrawSharesStr).toLocaleString()}</>
                     )}
                   </button>
                 )}
@@ -238,7 +275,7 @@ export function TransactModal({ isOpen, onClose, pool }: TransactModalProps) {
           <Button
             className="w-full gradient-primary font-bold h-12 rounded-xl shadow-lg"
             disabled={
-              isPending || !amount || Number(amount) <= 0 || isPaused || withdrawExceedsLpBalance
+              isPending || !amount || Number(amount) <= 0 || isPaused || withdrawExceedsMax
             }
             onClick={handleAction}
           >

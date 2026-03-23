@@ -22,6 +22,7 @@ import AdminDraftDetailPage from "./pages/admin/AdminDraftDetailPage";
 import AdminPoolDetailPage from "./pages/admin/AdminPoolDetailPage";
 import HistoryPage from "./pages/History";
 import NotFound from "./pages/NotFound";
+import FaucetPage from "./pages/FaucetPage";
 
 import '@rainbow-me/rainbowkit/styles.css';
 import { 
@@ -111,6 +112,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
+      <Route path="/faucet" element={<FaucetPage />} />
       <Route path="/borrower" element={<ProtectedRoute allowedRole="borrower"><BorrowerDashboard /></ProtectedRoute>} />
       <Route path="/borrower/pools" element={<ProtectedRoute allowedRole="borrower"><BorrowerPools /></ProtectedRoute>} />
       <Route path="/borrower/pools/:poolId" element={<ProtectedRoute allowedRole="borrower"><PoolDetail /></ProtectedRoute>} />

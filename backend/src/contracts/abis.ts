@@ -74,6 +74,7 @@ export const ASSET_MANAGER_ABI = [
 
 // ── ERC20 (for token approve / balance checks) ──────────────
 export const ERC20_ABI = [
+  'function name() view returns (string)',
   'function approve(address spender, uint256 amount) returns (bool)',
   'function allowance(address owner, address spender) view returns (uint256)',
   'function balanceOf(address account) view returns (uint256)',

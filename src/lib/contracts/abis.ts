@@ -41,6 +41,7 @@ export const LENDING_POOL_ABI = [
   'function assetUnderManagement() view returns (uint256)',
   'function convertToShares(uint256 assets) view returns (uint256 shares)',
   'function convertToAssets(uint256 shares) view returns (uint256 assets)',
+  'function previewWithdraw(uint256 assets) view returns (uint256 shares)',
 
   // Events
   'event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)',

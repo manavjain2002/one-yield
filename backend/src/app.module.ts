@@ -14,6 +14,7 @@ import { QueueModule } from './queue/queue.module';
 import { OracleModule } from './oracle/oracle.module';
 import { AuthModule } from './auth/auth.module';
 import { PoolsModule } from './pools/pools.module';
+import { FaucetModule } from './faucet/faucet.module';
 import { HealthController } from './health.controller';
 import { PoolEntity } from './entities/pool.entity';
 import { PoolDraftEntity } from './entities/pool-draft.entity';
@@ -109,6 +110,7 @@ import { BorrowerWalletEntity } from './entities/borrower-wallet.entity';
     OracleModule,
     AuthModule,
     PoolsModule,
+    FaucetModule,
   ],
   controllers: [HealthController],
   providers: [

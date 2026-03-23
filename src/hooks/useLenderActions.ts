@@ -38,16 +38,14 @@ export function useLenderActions(pool: Pool | null) {
     queryFn: async () => {
       if (!pool?.contractAddress || !address) return { maxWithdraw: 0n, maxRedeem: 0n };
       const contract = getLendingPoolRead(pool.contractAddress);
-      const erc20Contract = getERC20Read(pool.lpTokenAddress);
+      const lpAddr = pool.lpTokenAddress?.trim() || pool.contractAddress;
+      const erc20Contract = getERC20Read(lpAddr);
       try {
         const [mw, mr, ab] = await Promise.all([
           contract.maxWithdraw(address).catch(() => 0n),
           contract.maxRedeem(address).catch(() => 0n),
           erc20Contract.balanceOf(address).catch(() => 0n),
         ]);
-        console.log("🚀 ~ useLenderActions ~ ab:", ab)
-        console.log("🚀 ~ useLenderActions ~ mr:", mr)
-        console.log("🚀 ~ useLenderActions ~ mw:", mw)
         return { maxWithdraw: mw > ab ? ab : mw, maxRedeem: mr };
       } catch (e) {
         return { maxWithdraw: 0n, maxRedeem: 0n };
@@ -174,14 +172,24 @@ export function useLenderActions(pool: Pool | null) {
       const tid = toast.loading('Waiting for MetaMask signature to redeem LP tokens...');
       try {
         if (!pool?.contractAddress || !address) throw new Error('Contract info missing');
+        if (pausedQuery.data) throw new Error('Pool is currently paused. Withdrawals are disabled.');
+
+        const amountUnits = parseUnits(shares, 6);
+        const maxR = limitsQuery.data?.maxRedeem ?? 0n;
+        if (amountUnits > maxR) {
+          const maxStr = formatUnits(maxR, 6);
+          throw new Error(`Exceeds max redeemable LP. Max: ${maxStr}`);
+        }
+
         const contract = await getLendingPool(pool.contractAddress);
-        const tx = await contract.redeem(parseUnits(shares, 6), address, address);
+        const tx = await contract.redeem(amountUnits, address, address);
         toast.loading('Redeeming LP tokens...', { id: tid });
 
         await recordTx(tx.hash, 'withdraw', shares);
 
         await tx.wait();
         toast.success(`Success! Redeemed ${shares} LP tokens`, { id: tid });
+        await confirmTx(tx.hash, 'withdraw', pool?.id);
       } catch (err) {
         toast.error(getErrorMessage(err), { id: tid });
         throw err;

@@ -72,5 +72,13 @@ export default () => {
   oracle: {
     cron: process.env.ORACLE_CRON ?? '30 0 * * *',
   },
+  faucet: {
+    /** Optional; without it GET /faucet/info still works, POST /faucet/claim returns 503. */
+    privateKey: process.env.FAUCET_PRIVATE_KEY?.trim() || undefined,
+    /** Override token; defaults to blockchain.poolTokenAddress (mock USDC). */
+    tokenAddress: process.env.FAUCET_TOKEN_ADDRESS?.trim() || undefined,
+    /** Max amount per claim in human token units (e.g. USDC whole + fractional). */
+    maxPerTxHuman: process.env.FAUCET_MAX_PER_TX?.trim() || '100',
+  },
   };
 };

@@ -1,13 +1,35 @@
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { TransactionList } from '@/components/TransactionList';
-import { useTransactionHistory } from '@/hooks/useTransactionHistory';
-import { useState } from 'react';
+import {
+  useTransactionHistory,
+  type ManagerTxCategory,
+} from '@/hooks/useTransactionHistory';
+import { useWallet } from '@/contexts/WalletContext';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ChevronLeft, ChevronRight, History as HistoryIcon } from 'lucide-react';
 
+const MANAGER_HISTORY_TABS: { value: ManagerTxCategory; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'deployments', label: 'Deployments' },
+  { value: 'deposits', label: 'Deposits' },
+  { value: 'withdrawals', label: 'Withdrawals' },
+  { value: 'repayments', label: 'Repayments' },
+  { value: 'operations', label: 'Operations' },
+];
+
 export default function HistoryPage() {
+  const { role } = useWallet();
   const [page, setPage] = useState(1);
-  const { data, isLoading } = useTransactionHistory(page, 10);
+  const [category, setCategory] = useState<ManagerTxCategory>('all');
+  const managerCategory = role === 'manager' ? category : undefined;
+
+  useEffect(() => {
+    setPage(1);
+  }, [category, role]);
+
+  const { data, isLoading } = useTransactionHistory(page, 10, managerCategory);
 
   const transactions = data?.items ?? [];
   const totalPages = data?.totalPages ?? 1;
@@ -27,7 +49,22 @@ export default function HistoryPage() {
           </div>
         </div>
 
-        <div className="glass-card rounded-2xl p-6 min-h-[400px]">
+        <div className="glass-card rounded-2xl p-6 min-h-[400px] space-y-4">
+          {role === 'manager' && (
+            <Tabs
+              value={category}
+              onValueChange={(v) => setCategory(v as ManagerTxCategory)}
+              className="space-y-4"
+            >
+              <TabsList className="bg-secondary/50 rounded-xl flex flex-wrap h-auto gap-1 p-1 w-full justify-start">
+                {MANAGER_HISTORY_TABS.map(({ value, label }) => (
+                  <TabsTrigger key={value} value={value} className="rounded-lg text-xs sm:text-sm">
+                    {label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          )}
           <TransactionList transactions={transactions} isLoading={isLoading} />
           
           {totalPages > 1 && (
