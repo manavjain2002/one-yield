@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SearchableSelect } from '@/components/ui/searchable-select';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { api, getErrorMessage, isApiConfigured } from '@/lib/api';
 import { RepayModal } from '@/components/RepayModal';
@@ -36,6 +36,8 @@ export default function BorrowerPools() {
   const [tokenAddress, setTokenAddress] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [expandedPoolId, setExpandedPoolId] = useState<string | null>(null);
+  const [debouncedName, setDebouncedName] = useState('');
+  const [debouncedSymbol, setDebouncedSymbol] = useState('');
 
   // Repay Modal State
   const [selectedRepayPool, setSelectedRepayPool] = useState<Pool | null>(null);
@@ -53,6 +55,37 @@ export default function BorrowerPools() {
   const createPool = useCreatePool();
   const { isConnected: isWeb3Connected } = useAccount();
   const { openConnectModal } = useConnectModal();
+  const normalizedName = name.trim().toUpperCase();
+  const normalizedSymbol = symbol.trim().toUpperCase();
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedName(normalizedName);
+      setDebouncedSymbol(normalizedSymbol);
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [normalizedName, normalizedSymbol]);
+
+  const { data: identityAvailability, isFetching: isCheckingIdentity } = useQuery({
+    queryKey: ['pools', 'identity-availability', debouncedName, debouncedSymbol],
+    enabled: isApiConfigured() && role === 'borrower' && (!!debouncedName || !!debouncedSymbol),
+    queryFn: async () => {
+      const { data } = await api.get<{ nameUnique: boolean; symbolUnique: boolean }>(
+        '/pools/identity-availability',
+        {
+          params: {
+            name: debouncedName || undefined,
+            symbol: debouncedSymbol || undefined,
+          },
+        },
+      );
+      return data;
+    },
+  });
+
+  const nameUnique = normalizedName ? identityAvailability?.nameUnique !== false : true;
+  const symbolUnique = normalizedSymbol ? identityAvailability?.symbolUnique !== false : true;
+  const hasIdentityConflict = !nameUnique || !symbolUnique;
 
   // Backend returns only the logged-in borrower's pools — no client-side wallet filter needed
   const borrowerPools = myPoolRows;
@@ -75,6 +108,10 @@ export default function BorrowerPools() {
         toast.error('Symbol is required.');
         return;
       }
+      if (hasIdentityConflict || isCheckingIdentity) {
+        toast.error('Pool name/symbol must be unique before submission.');
+        return;
+      }
       const poolSize = usdToMockUsdcAtomic(borrowUsd);
       const apyNum = parseFloat(apy);
       if (!Number.isFinite(apyNum) || apyNum <= 0 || apyNum > 100) {
@@ -87,8 +124,8 @@ export default function BorrowerPools() {
         return;
       }
       await createPool.mutateAsync({
-        name: name.trim().toUpperCase(),
-        symbol: symbol.trim().toUpperCase(),
+        name: normalizedName,
+        symbol: normalizedSymbol,
         poolSize,
         apyBasisPoints,
         poolTokenAddress: tokenAddress || undefined,
@@ -256,6 +293,9 @@ export default function BorrowerPools() {
                 onChange={(e) => setName(e.target.value.toUpperCase())}
                 className="bg-secondary/50 border-border"
               />
+              {normalizedName && !nameUnique && (
+                <p className="text-xs text-destructive">This pool name already exists. Use a unique name.</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Symbol <span className="text-destructive">*</span></Label>
@@ -265,6 +305,12 @@ export default function BorrowerPools() {
                 onChange={(e) => setSymbol(e.target.value.toUpperCase())}
                 className="bg-secondary/50 border-border"
               />
+              {normalizedSymbol && !symbolUnique && (
+                <p className="text-xs text-destructive">This symbol already exists. Use a unique symbol.</p>
+              )}
+              {isCheckingIdentity && (
+                <p className="text-xs text-muted-foreground">Checking name/symbol availability...</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Accepted token <span className="text-destructive">*</span></Label>
@@ -317,7 +363,16 @@ export default function BorrowerPools() {
             <Button
               type="button"
               className="w-full gradient-primary rounded-xl mt-2"
-              disabled={createPool.isPending || !name.trim() || !symbol.trim() || !borrowUsd || !apy || !file}
+              disabled={
+                createPool.isPending ||
+                isCheckingIdentity ||
+                !name.trim() ||
+                !symbol.trim() ||
+                !borrowUsd ||
+                !apy ||
+                !file ||
+                hasIdentityConflict
+              }
               onClick={() => void handleCreate()}
             >
               {createPool.isPending ? 'Submitting…' : 'Create Pool'}

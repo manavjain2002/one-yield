@@ -146,6 +146,17 @@ export class PoolsController {
     return this.pools.listPools(status);
   }
 
+  @Get('identity-availability')
+  @SkipThrottle()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('borrower')
+  checkIdentityAvailability(
+    @Query('name') name?: string,
+    @Query('symbol') symbol?: string,
+  ) {
+    return this.pools.checkPoolIdentityAvailability(name, symbol);
+  }
+
   @Get('constants/tokens')
   @SkipThrottle()
   getTokens() {
@@ -198,9 +209,11 @@ export class PoolsController {
     if (!poolTokenAddress) throw new BadRequestException('POOL_TOKEN_ADDRESS must be configured');
 
     const identifier = user.walletAddress || user.username || user.userId;
+    const normalizedName = body.name.trim().toUpperCase();
+    const normalizedSymbol = body.symbol.trim().toUpperCase();
     return this.pools.createPoolDirect(identifier, {
-      name: body.name,
-      symbol: body.symbol,
+      name: normalizedName,
+      symbol: normalizedSymbol,
       poolManagerAddress,
       poolTokenAddress: body.poolTokenAddress || poolTokenAddress,
       oracleManagerAddress,

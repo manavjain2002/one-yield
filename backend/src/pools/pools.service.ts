@@ -98,6 +98,47 @@ export class PoolsService {
     return this.enrichPool(pool);
   }
 
+  async checkPoolIdentityAvailability(name?: string, symbol?: string) {
+    const normalizedName = (name || '').trim().toUpperCase();
+    const normalizedSymbol = (symbol || '').trim().toUpperCase();
+
+    if (!normalizedName && !normalizedSymbol) {
+      throw new BadRequestException('Provide name and/or symbol');
+    }
+
+    const [nameTakenInPools, nameTakenInDrafts, symbolTakenInPools, symbolTakenInDrafts] = await Promise.all([
+      normalizedName
+        ? this.pools
+            .createQueryBuilder('p')
+            .where('UPPER(TRIM(p.name)) = :name', { name: normalizedName })
+            .getExists()
+        : Promise.resolve(false),
+      normalizedName
+        ? this.drafts
+            .createQueryBuilder('d')
+            .where('UPPER(TRIM(d.name)) = :name', { name: normalizedName })
+            .getExists()
+        : Promise.resolve(false),
+      normalizedSymbol
+        ? this.pools
+            .createQueryBuilder('p')
+            .where('UPPER(TRIM(p.symbol)) = :symbol', { symbol: normalizedSymbol })
+            .getExists()
+        : Promise.resolve(false),
+      normalizedSymbol
+        ? this.drafts
+            .createQueryBuilder('d')
+            .where('UPPER(TRIM(d.symbol)) = :symbol', { symbol: normalizedSymbol })
+            .getExists()
+        : Promise.resolve(false),
+    ]);
+
+    return {
+      nameUnique: normalizedName ? !(nameTakenInPools || nameTakenInDrafts) : true,
+      symbolUnique: normalizedSymbol ? !(symbolTakenInPools || symbolTakenInDrafts) : true,
+    };
+  }
+
   async getTransactions(idOrContract: string) {
     const pool = await this.pools.findOne({
       where: [{ id: idOrContract }, { contractAddress: idOrContract }],
@@ -178,6 +219,27 @@ export class PoolsService {
    * by an admin from the portal; this path does not send a factory transaction.
    */
   async createPoolDirect(borrowerIdentifier: string, dto: CreatePoolDto, file?: Express.Multer.File) {
+    const normalizedName = (dto.name || '').trim().toUpperCase();
+    const normalizedSymbol = (dto.symbol || '').trim().toUpperCase();
+
+    if (!normalizedName) {
+      throw new BadRequestException('Pool name is required');
+    }
+    if (!normalizedSymbol) {
+      throw new BadRequestException('Pool symbol is required');
+    }
+
+    const availability = await this.checkPoolIdentityAvailability(normalizedName, normalizedSymbol);
+    if (!availability.nameUnique && !availability.symbolUnique) {
+      throw new BadRequestException('Pool name and symbol already exist. Use unique values.');
+    }
+    if (!availability.nameUnique) {
+      throw new BadRequestException('Pool name already exists. Use a unique name.');
+    }
+    if (!availability.symbolUnique) {
+      throw new BadRequestException('Pool symbol already exists. Use a unique symbol.');
+    }
+
     if (!dto.poolTokenAddress?.trim()) {
       throw new BadRequestException('poolTokenAddress is required');
     }
@@ -190,8 +252,8 @@ export class PoolsService {
 
     const draft = this.drafts.create({
       borrowerIdentifier: normalizedBorrower,
-      name: dto.name,
-      symbol: dto.symbol,
+      name: normalizedName,
+      symbol: normalizedSymbol,
       apyBasisPoints: dto.apyBasisPoints,
       poolSize: dto.poolSize,
       poolTokenAddress: dto.poolTokenAddress,
@@ -1067,11 +1129,14 @@ export class PoolsService {
 
   async getBorrowerWalletsForPool(poolId: string) {
     const pool = await this.pools.findOne({ where: { id: poolId } });
-    console.log("🚀 ~ PoolsService ~ getBorrowerWalletsForPool ~ pool:", pool)
     if (!pool) throw new NotFoundException('Pool not found');
-    return this.borrowerWallets.find({
-      where: { tokenAddress: pool.poolTokenAddress },
-    });
+    const borrowerId = pool.borrowerAddress.trim().toLowerCase();
+    const token = pool.poolTokenAddress.trim().toLowerCase();
+    return this.borrowerWallets
+      .createQueryBuilder('w')
+      .where('LOWER(w.borrowerIdentifier) = :borrowerId', { borrowerId })
+      .andWhere('LOWER(w.tokenAddress) = :token', { token })
+      .getMany();
   }
 
   private async recordAction(

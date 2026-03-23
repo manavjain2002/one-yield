@@ -1,6 +1,6 @@
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { StatusBadge } from '@/components/StatusBadge';
-import type { Pool } from '@/data/mockData';
+import type { Pool, TxHistory } from '@/data/mockData';
 import { useManagerSummary } from '@/hooks/useManagerSummary';
 import { useManagerActions } from '@/hooks/useManagerActions';
 import { usePoolContractPaused } from '@/hooks/usePoolContractPaused';
@@ -20,6 +20,41 @@ import { ChildPoolsManager } from './ChildPoolsManager';
 import { Loader2 } from 'lucide-react';
 import { useTransaction } from '@/contexts/TransactionContext';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+function DeploymentsDedicatedWalletsCell({
+  tx,
+  borrowerPools,
+}: {
+  tx: TxHistory;
+  borrowerPools: Pool['borrowerPools'];
+}) {
+  const t = tx.type.toLowerCase();
+  if (t === 'send_to_reserve') {
+    return <span className="text-muted-foreground text-xs">Reserve / FM</span>;
+  }
+  if (t === 'deploy_funds') {
+    const rows = borrowerPools ?? [];
+    if (rows.length === 0) {
+      return <span className="text-muted-foreground text-xs">—</span>;
+    }
+    return (
+      <div className="flex flex-col gap-2 max-w-[240px]">
+        {rows.map((bp) => (
+          <div
+            key={`${bp.v1PoolId}-${bp.dedicatedWalletAddress}`}
+            className="text-xs space-y-0.5 rounded-md border border-border/40 bg-secondary/20 px-2 py-1.5"
+          >
+            <AddressLink address={bp.dedicatedWalletAddress} />
+            <div className="text-muted-foreground tabular-nums">
+              {(bp.allocationBps / 100).toFixed(2)}% alloc · ${(Number(bp.fundsDeployed || '0') / 1e6).toLocaleString()}{' '}
+              deployed
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return <span className="text-muted-foreground text-xs">—</span>;
+}
 
 export default function ManagerPools() {
   const { data: summary } = useManagerSummary();
@@ -363,31 +398,11 @@ export default function ManagerPools() {
             <TabsTrigger value="deployments" className="rounded-lg">Deployments</TabsTrigger>
             <TabsTrigger value="operations" className="rounded-lg">Operations</TabsTrigger>
           </TabsList>
-          {txTabs.map((tab) => (
+          {txTabs.map((tab) => {
+            const showDedicatedCol = tab === 'deployments';
+            const colCount = showDedicatedCol ? 8 : 7;
+            return (
             <TabsContent key={tab} value={tab}>
-              {tab === 'deployments' && (selectedPool.borrowerPools?.length ?? 0) > 0 && (
-                <div className="rounded-xl border border-border/50 bg-secondary/10 px-4 py-3 mb-3 space-y-2">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    Borrower wallets (pool configuration)
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {(selectedPool.borrowerPools ?? []).map((bp) => (
-                      <div
-                        key={bp.dedicatedWalletAddress}
-                        className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs rounded-lg bg-card/90 border border-border/40 px-3 py-2 shadow-sm"
-                      >
-                        <AddressLink address={bp.dedicatedWalletAddress} />
-                        <span className="text-muted-foreground tabular-nums">
-                          {(bp.allocationBps / 100).toFixed(2)}% alloc
-                        </span>
-                        <span className="font-semibold tabular-nums text-foreground">
-                          ${(Number(bp.fundsDeployed || '0') / 1e6).toLocaleString()} deployed
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
               <div className="glass-card rounded-2xl overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm min-w-[640px]">
@@ -397,6 +412,11 @@ export default function ManagerPools() {
                         <th className="px-4 py-3 text-left font-medium text-muted-foreground">Amount</th>
                         <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">From</th>
                         <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">To</th>
+                        {showDedicatedCol && (
+                          <th className="px-4 py-3 text-left font-medium text-muted-foreground min-w-[200px]">
+                            Dedicated wallets
+                          </th>
+                        )}
                         <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
                         <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden sm:table-cell">Tx Hash</th>
                         <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
@@ -414,6 +434,14 @@ export default function ManagerPools() {
                             <td className="px-4 py-3 hidden md:table-cell max-w-[140px] truncate">
                               <TxAddressCell addr={tx.toAddress} />
                             </td>
+                            {showDedicatedCol && (
+                              <td className="px-4 py-3 align-top">
+                                <DeploymentsDedicatedWalletsCell
+                                  tx={tx}
+                                  borrowerPools={selectedPool.borrowerPools}
+                                />
+                              </td>
+                            )}
                             <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                               {new Date(tx.timestamp).toLocaleDateString()}
                             </td>
@@ -427,7 +455,7 @@ export default function ManagerPools() {
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground italic">
+                          <td colSpan={colCount} className="px-4 py-12 text-center text-muted-foreground italic">
                             No transactions found
                           </td>
                         </tr>
@@ -437,7 +465,8 @@ export default function ManagerPools() {
                 </div>
               </div>
             </TabsContent>
-          ))}
+            );
+          })}
         </Tabs>
       </div>
 
