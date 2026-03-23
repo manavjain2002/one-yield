@@ -41,8 +41,6 @@ export default function FaucetPage() {
   const [amount, setAmount] = useState('');
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
 
-  const faucetWalletValid = FAUCET_WALLET_ADDRESS.length > 0 && EVM_ADDR_RE.test(FAUCET_WALLET_ADDRESS);
-
   const infoQuery = useQuery({
     queryKey: ['faucet', 'info'],
     queryFn: async () => {
@@ -63,8 +61,7 @@ export default function FaucetPage() {
       const raw = await c.balanceOf(FAUCET_WALLET_ADDRESS);
       return BigInt(raw.toString());
     },
-    enabled:
-      Boolean(isApiConfigured() && faucetWalletValid && tokenAddress && EVM_ADDR_RE.test(tokenAddress)),
+    enabled: Boolean(isApiConfigured() && tokenAddress && EVM_ADDR_RE.test(tokenAddress)),
     retry: 1,
     refetchInterval: 60_000,
   });
@@ -193,39 +190,26 @@ export default function FaucetPage() {
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Faucet wallet balance
                 </h2>
-                {!FAUCET_WALLET_ADDRESS && (
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Set <code className="rounded bg-secondary/60 px-1 py-0.5 text-[10px]">VITE_FAUCET_WALLET_ADDRESS</code>{' '}
-                    in the frontend env to show how much mock {infoQuery.data.symbol} the faucet wallet holds (read via{' '}
-                    <code className="rounded bg-secondary/60 px-1 py-0.5 text-[10px]">VITE_RPC_URL</code>).
-                  </p>
-                )}
-                {FAUCET_WALLET_ADDRESS && !faucetWalletValid && (
+                <p className="text-[10px] text-muted-foreground">
+                  On-chain read via RPC (<code className="rounded bg-secondary/60 px-1">VITE_RPC_URL</code> or default Hashio testnet).
+                </p>
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between text-sm">
+                  <span className="text-muted-foreground font-mono text-xs break-all">{FAUCET_WALLET_ADDRESS}</span>
+                  {faucetBalanceQuery.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" aria-hidden />
+                  ) : null}
+                </div>
+                {faucetBalanceQuery.isError && (
                   <p className="text-xs text-destructive">
-                    <code className="text-[10px]">VITE_FAUCET_WALLET_ADDRESS</code> is not a valid 0x-prefixed EVM address.
+                    Could not load balance. Check RPC and contract address.{' '}
+                    {faucetBalanceQuery.error instanceof Error ? faucetBalanceQuery.error.message : ''}
                   </p>
                 )}
-                {faucetWalletValid && (
-                  <>
-                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between text-sm">
-                      <span className="text-muted-foreground font-mono text-xs break-all">{FAUCET_WALLET_ADDRESS}</span>
-                      {faucetBalanceQuery.isFetching && !faucetBalanceQuery.data ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" aria-hidden />
-                      ) : null}
-                    </div>
-                    {faucetBalanceQuery.isError && (
-                      <p className="text-xs text-destructive">
-                        Could not load balance. Check RPC and contract address.{' '}
-                        {faucetBalanceQuery.error instanceof Error ? faucetBalanceQuery.error.message : ''}
-                      </p>
-                    )}
-                    {faucetBalanceQuery.data !== undefined && !faucetBalanceQuery.isError && (
-                      <p className="text-lg font-semibold tabular-nums">
-                        {formatUnits(faucetBalanceQuery.data, tokenDecimals)}{' '}
-                        <span className="text-sm font-medium text-muted-foreground">{infoQuery.data.symbol}</span>
-                      </p>
-                    )}
-                  </>
+                {faucetBalanceQuery.data !== undefined && !faucetBalanceQuery.isError && (
+                  <p className="text-lg font-semibold tabular-nums">
+                    {formatUnits(faucetBalanceQuery.data, tokenDecimals)}{' '}
+                    <span className="text-sm font-medium text-muted-foreground">{infoQuery.data.symbol}</span>
+                  </p>
                 )}
               </div>
 

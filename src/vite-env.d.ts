@@ -8,8 +8,6 @@ interface ImportMetaEnv {
   readonly VITE_MIRROR_NODE_URL?: string;
   readonly VITE_FACTORY_CONTRACT_ID?: string;
   readonly VITE_USE_MOCK_WALLET?: string;
-  /** Faucet signer EVM address — shown on `/faucet` for mock USDC balance (optional). */
-  readonly VITE_FAUCET_WALLET_ADDRESS?: string;
 }
 
 interface ImportMeta {
