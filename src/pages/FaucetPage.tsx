@@ -190,11 +190,21 @@ export default function FaucetPage() {
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Faucet wallet balance
                 </h2>
-                <p className="text-[10px] text-muted-foreground">
-                  On-chain read via RPC (<code className="rounded bg-secondary/60 px-1">VITE_RPC_URL</code> or default Hashio testnet).
-                </p>
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between text-sm">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-muted-foreground font-mono text-xs break-all">{FAUCET_WALLET_ADDRESS}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(FAUCET_WALLET_ADDRESS);
+                      toast.success('Faucet wallet address copied');
+                    }}
+                    aria-label="Copy faucet wallet address"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
                   {faucetBalanceQuery.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" aria-hidden />
                   ) : null}
